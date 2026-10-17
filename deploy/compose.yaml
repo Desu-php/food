@@ -51,9 +51,18 @@ services:
 
   catalog:
     build:
-      context: ../services/catalog
+      context: ..
+      dockerfile: services/catalog/Dockerfile
     environment:
       DATABASE_URL: postgres://catalog_service:${CATALOG_DB_PASSWORD:?set CATALOG_DB_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-catalog}?sslmode=disable
+      APP_ENV: ${APP_ENV:-development}
+      DEV_AUTH_ENABLED: ${DEV_AUTH_ENABLED:-true}
+      DEV_ADMIN_IDS: ${DEV_ADMIN_IDS:-}
+      DEV_RESTAURANT_GRANTS: ${DEV_RESTAURANT_GRANTS:-}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-}
+      OIDC_AUDIENCE: ${CATALOG_OIDC_AUDIENCE:-}
+      AUTH_IDENTITIES_FILE: ${AUTH_IDENTITIES_FILE:-}
       HTTP_ADDR: :8080
       INTERNAL_HTTP_ADDR: catalog-internal:8082
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -109,6 +118,10 @@ services:
       dockerfile: services/orders/Dockerfile
     environment:
       DATABASE_URL: postgres://orders_service:${ORDERS_DB_PASSWORD:?set ORDERS_DB_PASSWORD in .env}@postgres:5432/orders?sslmode=disable
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-}
+      OIDC_AUDIENCE: ${ORDERS_OIDC_AUDIENCE:-}
+      AUTH_IDENTITIES_FILE: ${AUTH_IDENTITIES_FILE:-}
       HTTP_ADDR: :8081
       CATALOG_BASE_URL: http://catalog-internal:8082
       CATALOG_TIMEOUT: ${CATALOG_TIMEOUT:-2s}
@@ -338,6 +351,10 @@ services:
       dockerfile: services/delivery/Dockerfile
     environment:
       DATABASE_URL: postgres://delivery_service:${DELIVERY_DB_PASSWORD:?set DELIVERY_DB_PASSWORD in .env}@postgres:5432/delivery?sslmode=disable
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-}
+      OIDC_AUDIENCE: ${DELIVERY_OIDC_AUDIENCE:-}
+      AUTH_IDENTITIES_FILE: ${AUTH_IDENTITIES_FILE:-}
       HTTP_ADDR: :8085
       APP_ENV: ${APP_ENV:-development}
       DEV_AUTH_ENABLED: ${DEV_AUTH_ENABLED:-true}

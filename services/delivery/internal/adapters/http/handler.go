@@ -15,6 +15,7 @@ import (
 	events "example.com/food/contracts/orders/v1"
 	"example.com/food/delivery/internal/application"
 	"example.com/food/delivery/internal/domain"
+	"example.com/food/platform/security"
 )
 
 type handler struct {
@@ -102,6 +103,17 @@ func (h *handler) fail(w http.ResponseWriter, err error) {
 	writeJSON(w, status, map[string]string{"error": message})
 }
 func (h *handler) identity(w http.ResponseWriter, r *http.Request, courier bool) (int64, bool) {
+	if p, ok := security.FromContext(r.Context()); ok && p.Subject != "" {
+		if courier && p.Has("courier") && p.CourierID > 0 {
+			return p.CourierID, true
+		}
+		if !courier && (p.Has("dispatcher") || p.Has("admin")) && p.Can("delivery:dispatch") {
+			return p.UserID, true
+		}
+		writeJSON(w, 403, map[string]string{"error": "access denied"})
+		return 0, false
+	}
+
 	if !h.devAuth {
 		writeJSON(w, 401, map[string]string{"error": "authentication required"})
 		return 0, false
@@ -123,6 +135,14 @@ func (h *handler) identity(w http.ResponseWriter, r *http.Request, courier bool)
 	return id, true
 }
 func (h *handler) reader(w http.ResponseWriter, r *http.Request) (int64, int64, bool) {
+	if p, ok := security.FromContext(r.Context()); ok && p.Subject != "" {
+		if (p.Has("dispatcher") || p.Has("admin")) && p.Can("delivery:dispatch") {
+			return p.UserID, 0, true
+		}
+		id, allowed := h.identity(w, r, true)
+		return 0, id, allowed
+	}
+
 	// Ambiguous identities are rejected; a courier identity cannot grant dispatcher access.
 	if r.Header.Get("X-Dev-Courier-ID") != "" {
 		if r.Header.Get("X-Dev-User-ID") != "" {

@@ -67,7 +67,7 @@ func integrationPool(t *testing.T) *pgxpool.Pool {
 		t.Fatal(err)
 	}
 
-	for _, name := range []string{"000002_fulfillment", "000003_saga", "000004_pickup"} {
+	for _, name := range []string{"000002_fulfillment", "000003_saga", "000004_pickup", "000005_consumer_quarantine"} {
 		body, err := os.ReadFile("../../../migrations/" + name + ".up.sql")
 		if err != nil {
 			t.Fatal(err)
@@ -178,6 +178,13 @@ func TestInboxRollbackAndReplay(t *testing.T) {
 
 func TestInboxMigrationRoundTrip(t *testing.T) {
 	pool := integrationPool(t)
+	down, err := os.ReadFile("../../../migrations/000005_consumer_quarantine.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(context.Background(), string(down)); err != nil {
+		t.Fatal(err)
+	}
 	for _, suffix := range []string{"down", "up"} {
 		body, err := os.ReadFile("../../../migrations/000001_inbox." + suffix + ".sql")
 		if err != nil {
@@ -187,7 +194,7 @@ func TestInboxMigrationRoundTrip(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, name := range []string{"000002_fulfillment", "000003_saga", "000004_pickup"} {
+	for _, name := range []string{"000002_fulfillment", "000003_saga", "000004_pickup", "000005_consumer_quarantine"} {
 		body, err := os.ReadFile("../../../migrations/" + name + ".up.sql")
 		if err != nil {
 			t.Fatal(err)

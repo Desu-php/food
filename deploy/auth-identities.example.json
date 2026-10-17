@@ -1,0 +1,10 @@
+{
+  "issuer": "https://identity.example/realms/food",
+  "identities": [
+    {"subject": "idp-customer-subject", "user_id": 101, "customer_id": 7, "roles": ["customer"]},
+    {"subject": "idp-staff-subject", "user_id": 102, "roles": ["restaurant_staff"], "restaurants": [1]},
+    {"subject": "idp-courier-subject", "user_id": 103, "courier_id": 1, "roles": ["courier"]},
+    {"subject": "idp-dispatcher-subject", "user_id": 104, "roles": ["dispatcher"], "permissions": ["delivery:dispatch", "saga:retry"], "restaurants": [1]},
+    {"subject": "idp-admin-subject", "user_id": 105, "roles": ["admin"], "permissions": ["delivery:dispatch", "saga:retry"], "restaurants": [1]}
+  ]
+}

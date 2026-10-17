@@ -1,8 +1,10 @@
 FROM golang:1.27.2-alpine AS build
-WORKDIR /src
-COPY go.mod go.sum ./
+WORKDIR /src/services/catalog
+ENV GOWORK=off
+COPY platform /src/platform
+COPY services/catalog/go.mod services/catalog/go.sum ./
 RUN go mod download
-COPY . .
+COPY services/catalog .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/catalog ./cmd/api
 
 FROM alpine:3.22

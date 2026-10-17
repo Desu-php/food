@@ -21,7 +21,7 @@ def main():
         compose("up", "--build", "-d", "--wait", "--wait-timeout", "240", "--scale", "outbox=2", "--scale", "orders-saga=2")
         patch = urllib.request.Request("http://localhost:28080/restaurants/1", method="PATCH",
                                        data=json.dumps({"address": "Restaurant-owned location"}).encode(),
-                                       headers={"Content-Type": "application/json"})
+                                       headers={"Content-Type": "application/json", "X-Dev-User-ID": "1"})
         with urllib.request.urlopen(patch, timeout=10) as response:
             assert response.status == 200
         category = request(28080, "/restaurants/1/categories", {"name": "Pickup", "sort_order": 0})

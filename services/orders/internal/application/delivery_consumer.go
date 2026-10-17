@@ -29,9 +29,10 @@ type InboxRepository interface {
 	ProcessDelivery(context.Context, events.Event) error
 }
 type Consumer struct {
-	source MessageSource
-	repo   InboxRepository
-	logger *slog.Logger
+	processor func(context.Context, Message) error
+	source    MessageSource
+	repo      InboxRepository
+	logger    *slog.Logger
 }
 
 func NewConsumer(source MessageSource, repo InboxRepository, logger ...*slog.Logger) *Consumer {
@@ -42,9 +43,9 @@ func NewConsumer(source MessageSource, repo InboxRepository, logger ...*slog.Log
 	return c
 }
 
-// A failure stops consumption without acknowledging this record or any later offset.
-// Restart/retry replays the same record; Inbox and business effects share one transaction.
-func (c *Consumer) Process(ctx context.Context, m Message) (err error) {
+// Handle applies one record without acknowledging Kafka. Production bootstrap
+// adds bounded retries and durable parking; business effects share the Inbox transaction.
+func (c *Consumer) Handle(ctx context.Context, m Message) (err error) {
 	e, err := events.Decode(m.Body)
 	defer func() {
 		if c.logger == nil {
@@ -79,7 +80,7 @@ func (c *Consumer) Process(ctx context.Context, m Message) (err error) {
 	if err = c.repo.ProcessDelivery(ctx, e); err != nil {
 		return err
 	}
-	return c.source.Commit(ctx, m)
+	return nil
 }
 func (c *Consumer) Run(ctx context.Context) error {
 	for ctx.Err() == nil {
@@ -90,9 +91,13 @@ func (c *Consumer) Run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		op, cancel := context.WithTimeout(ctx, 10*time.Second)
-		err = c.Process(op, m)
-		cancel()
+		if c.processor != nil {
+			err = c.processor(ctx, m)
+		} else {
+			op, cancel := context.WithTimeout(ctx, 10*time.Second)
+			err = c.Process(op, m)
+			cancel()
+		}
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -101,4 +106,16 @@ func (c *Consumer) Run(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// Process acknowledges only after the application transaction completes.
+func (c *Consumer) Process(ctx context.Context, m Message) error {
+	if err := c.Handle(ctx, m); err != nil {
+		return err
+	}
+	return c.source.Commit(ctx, m)
+}
+func (c Consumer) WithProcessor(processor func(context.Context, Message) error) *Consumer {
+	c.processor = processor
+	return &c
 }

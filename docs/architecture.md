@@ -83,7 +83,8 @@ FK; имена категорий и блюд не ограничены уник
 HTTP использует отдельные DTO. PATCH читает optional поля через RawMessage и
 указатели: отсутствие отличается от false, 0 и пустой строки, null запрещён.
 Публичная проекция не выдаёт служебные timestamps и deleted_at. Административные
-и публичные маршруты регистрируются отдельно; authorization ещё не реализована.
+и публичные маршруты регистрируются отдельно. Каждая мутация проверяет OIDC
+principal и серверный grant конкретного ресторана; создание ресторана требует admin.
 
 GetRestaurantMenu использует один LEFT JOIN от restaurants через категории к
 неудалённым блюдам. Это проверяет наличие ресторана, сохраняет пустые категории
@@ -180,3 +181,16 @@ flowchart LR
     E --> N[Notifications Inbox / PENDING с fulfillment_type]
     E --> I[Delivery Inbox: PICKUP без эффектов]
 ```
+
+
+## Security & Reliability (этап 9)
+
+[ADR 0006](adr/0006-security-and-consumer-quarantine.md) описывает серверные
+issuer/subject bindings, роли и resource authorization. `platform/security`
+используется только bootstrap/HTTP adapters, business layers не зависят от JWT.
+Новый локальный persistence adapter каждого consumer сериализует process/park/replay,
+повторяет временные ошибки и сохраняет poison/dependent messages в своей БД.
+Service-wide fence охватывает разные partitions и commands/events Delivery.
+Inbox/Outbox продолжают атомарно фиксировать бизнес-эффекты; публичные event JSON
+и fingerprints совместимы. Operational replay проходит через прежние domain gates.
+Настройка и восстановление — [runbook](security-reliability.md).

@@ -144,7 +144,7 @@ func (r *testMenuRepository) GetMenu(ctx context.Context, rid int64) (applicatio
 func newMenuTestHandler() http.Handler {
 	restaurants := &testRepository{rows: []domain.Restaurant{{ID: 1, Name: "Pizza House", IsOpen: true}, {ID: 2, Name: "Burger Corner"}}, nextID: 3}
 	repo := &testMenuRepository{restaurants: restaurants, categories: map[int64]domain.MenuCategory{}, items: map[int64]domain.MenuItem{}, deleted: map[int64]bool{}, nextCategory: 1, nextItem: 1}
-	return NewHandler(application.NewRestaurants(restaurants), application.NewMenu(restaurants, repo), func(context.Context) error { return nil }, slog.New(slog.NewJSONHandler(io.Discard, nil)), time.Second)
+	return authenticatedCatalog(NewHandler(application.NewRestaurants(restaurants), application.NewMenu(restaurants, repo), func(context.Context) error { return nil }, slog.New(slog.NewJSONHandler(io.Discard, nil)), time.Second))
 }
 
 func TestMenuHTTPLifecycle(t *testing.T) {

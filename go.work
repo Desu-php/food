@@ -1,6 +1,7 @@
 go 1.27.2
 
 use (
+	./platform
 	./contracts
 	./services/delivery
 	./services/catalog

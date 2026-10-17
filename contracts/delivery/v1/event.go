@@ -4,6 +4,7 @@ package delivery
 import (
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -23,6 +24,8 @@ const (
 	DeliveryCancellationRejected = "DeliveryCancellationRejected"
 	DeliveryStateReported        = "DeliveryStateReported"
 )
+
+var ErrUnsupported = errors.New("unsupported delivery contract")
 
 var ErrInvalid = errors.New("invalid delivery event")
 
@@ -104,6 +107,9 @@ func Decode(body []byte) (Event, error) {
 	var e Event
 	if len(body) > orders.MaxMessageBytes || json.Unmarshal(body, &e) != nil {
 		return e, ErrInvalid
+	}
+	if e.SchemaVersion != 1 || !slices.Contains([]string{DeliveryCreated, CourierAssigned, DeliveryPickedUp, DeliveryCompleted, DeliveryCancelled, CourierReleased, DeliveryCancellationRejected, DeliveryStateReported}, e.EventType) {
+		return e, errors.Join(ErrInvalid, ErrUnsupported)
 	}
 	return e, e.Validate()
 }

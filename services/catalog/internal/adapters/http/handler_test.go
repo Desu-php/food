@@ -16,6 +16,7 @@ import (
 
 	"example.com/food/catalog/internal/application"
 	"example.com/food/catalog/internal/domain"
+	"example.com/food/platform/security"
 )
 
 // This fake is only used in tests; production always uses PostgreSQL.
@@ -94,7 +95,7 @@ func testHandler(failure error, readyErr error) http.Handler {
 		{ID: 1, Name: "Pizza House", IsOpen: true, CreatedAt: now, UpdatedAt: now},
 		{ID: 2, Name: "Burger Corner", IsOpen: false, CreatedAt: now, UpdatedAt: now},
 	}, nextID: 3, failure: failure}
-	return NewHandler(application.NewRestaurants(repo), nil, func(context.Context) error { return readyErr }, slog.New(slog.NewJSONHandler(io.Discard, nil)), time.Second)
+	return authenticatedCatalog(NewHandler(application.NewRestaurants(repo), nil, func(context.Context) error { return readyErr }, slog.New(slog.NewJSONHandler(io.Discard, nil)), time.Second))
 }
 
 func request(h http.Handler, method, path, body string) *httptest.ResponseRecorder {
@@ -313,4 +314,10 @@ func TestConcurrentHTTPRequests(t *testing.T) {
 	if len(seen) != count {
 		t.Fatalf("created %d, want %d", len(seen), count)
 	}
+}
+
+func authenticatedCatalog(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r.WithContext(security.WithPrincipal(r.Context(), security.Principal{UserID: 1, Roles: []string{"admin"}})))
+	})
 }

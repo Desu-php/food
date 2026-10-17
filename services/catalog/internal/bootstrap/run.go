@@ -13,9 +13,15 @@ import (
 	httpadapter "example.com/food/catalog/internal/adapters/http"
 	"example.com/food/catalog/internal/adapters/postgres"
 	"example.com/food/catalog/internal/application"
+	"example.com/food/platform/security"
 )
 
 func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
+	auth, err := security.New(cfg.Authentication)
+	if err != nil {
+		return err
+	}
+
 	poolConfig, err := pgxpool.ParseConfig(cfg.DatabaseURL)
 	if err != nil {
 		return errors.New("invalid DATABASE_URL")
@@ -51,7 +57,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 	}
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpadapter.NewHandler(restaurants, menu, ready, logger, cfg.RequestTimeout),
+		Handler:           auth.Wrap(httpadapter.NewHandler(restaurants, menu, ready, logger, cfg.RequestTimeout)),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,
 		WriteTimeout:      cfg.WriteTimeout,

@@ -6,6 +6,10 @@ POS-терминалом курьера либо ресторана. Самов�
 Онлайн-оплаты и Payment Service нет. Полный цикл и запуск:
 [Restaurant Fulfillment + Delivery](docs/fulfillment.md), [ADR 0004 — Fulfillment Saga](docs/adr/0004-fulfillment-saga.md).
 
+Этап 9: OIDC/JWKS, resource authorization, durable consumer quarantine и CI.
+Настройка и восстановление: [Security & Reliability](docs/security-reliability.md),
+[ADR 0006](docs/adr/0006-security-and-consumer-quarantine.md).
+
 Monorepo для сервисов доставки еды. Реализованы Catalog с ресторанами, категориями и блюдами и Orders с созданием,
 чтением, отменой и постоянной идемпотентностью. У каждого сервиса своя база PostgreSQL,
 Clean Architecture, стандартный net/http, pgx/v5, структурированные JSON-логи slog,
@@ -55,7 +59,7 @@ docs/architecture.md      решения и границы слоёв
 
 Сервис можно собирать самостоятельно; go.work связывает модули для разработки в
 monorepo. Корневого go.mod нет. Поэтому из корня используйте
-`go test ./contracts/... ./services/catalog/... ./services/orders/... ./services/notifications/... ./services/delivery/...`, а не `go test ./...`.
+`go test ./platform/... ./contracts/... ./services/catalog/... ./services/orders/... ./services/notifications/... ./services/delivery/...`, а не `go test ./...`.
 
 ## Запуск через Docker Compose
 
@@ -170,8 +174,8 @@ go run ./services/catalog/cmd/api
 | INTERNAL_HTTP_ADDR | 127.0.0.1:8082 | приватный quote listener Catalog |
 | CATALOG_BASE_URL | http://localhost:8082 | Orders: адрес внутреннего Catalog |
 | CATALOG_TIMEOUT | 2s | Orders: HTTP timeout, меньше REQUEST_TIMEOUT |
-| APP_ENV | production | Orders: production/development/test |
-| DEV_AUTH_ENABLED | false | Orders: dev/test identity; production запрещён |
+| APP_ENV | production | Все API: production/development/test |
+| DEV_AUTH_ENABLED | false | Все API: dev/test identity; production запрещён |
 | LOG_LEVEL | INFO | DEBUG, INFO, WARN или ERROR |
 | DB_MAX_CONNS / DB_MIN_CONNS | 10 / 0 | границы pool |
 | DB_CONNECT_TIMEOUT | 5s | подключение и проверка БД при старте |
@@ -217,10 +221,10 @@ curl -i http://localhost:8080/health
 curl -i http://localhost:8080/ready
 curl -i 'http://localhost:8080/restaurants?limit=10&offset=0'
 curl -i http://localhost:8080/restaurants/1
-curl -i -X POST http://localhost:8080/restaurants \
+curl -i -X POST http://localhost:8080/restaurants -H 'X-Dev-User-ID: 1' \
   -H 'Content-Type: application/json' \
   -d '{"name":"New Cafe","is_open":true}'
-curl -i -X PATCH http://localhost:8080/restaurants/3 \
+curl -i -X PATCH http://localhost:8080/restaurants/3 -H 'X-Dev-User-ID: 1' \
   -H 'Content-Type: application/json' \
   -d '{"is_open":false}'
 ```
@@ -255,11 +259,10 @@ docker compose --env-file .env -f deploy/compose.yaml up --build -d catalog
 | Административный | PATCH /restaurants/{restaurantId}/items/{itemId} | 200 |
 | Административный | DELETE /restaurants/{restaurantId}/items/{itemId} | 204 |
 
-Публичные и административные маршруты меню регистрируются отдельными функциями
-в HTTP-адаптере. **Авторизация пока отсутствует. Административные маршруты не
-защищены для production**: до публикации необходимо добавить проверку прав на
-этой границе, включая существующие POST/PATCH ресторанов. Разделение регистрации
-маршрутов само по себе не является защитой.
+Публичное чтение доступно без аутентификации. Каждая мутация проверяет principal:
+создание ресторана требует admin, изменения существующего ресторана/меню — admin
+либо restaurant_staff с серверным grant именно этого ресторана. В локальном
+примере DEV_ADMIN_IDS=1 и X-Dev-User-ID: 1; production использует Bearer JWT.
 
 Категории упорядочены по `(sort_order, id)`, блюда внутри категории — по `id`.
 Отдельного sort_order у блюда сейчас нет; ID обеспечивает стабильный порядок.
@@ -291,29 +294,29 @@ PATCH меняет только переданные поля. `false` откл�
 
 ```bash
 # Создать категорию; ответ 201 содержит её ID и timestamps.
-curl -i -X POST http://localhost:8080/restaurants/1/categories \
+curl -i -X POST http://localhost:8080/restaurants/1/categories -H 'X-Dev-User-ID: 1' \
   -H 'Content-Type: application/json' \
   -d '{"name":"Пицца","sort_order":1}'
 
 # Изменить порядок категории.
-curl -i -X PATCH http://localhost:8080/restaurants/1/categories/1 \
+curl -i -X PATCH http://localhost:8080/restaurants/1/categories/1 -H 'X-Dev-User-ID: 1' \
   -H 'Content-Type: application/json' \
   -d '{"sort_order":0}'
 
 # Создать блюдо; ответ 201 содержит все его поля и timestamps.
-curl -i -X POST http://localhost:8080/restaurants/1/items \
+curl -i -X POST http://localhost:8080/restaurants/1/items -H 'X-Dev-User-ID: 1' \
   -H 'Content-Type: application/json' \
   -d '{"category_id":1,"name":"Маргарита","description":"Сыр, томаты","price_minor":6500,"currency":"TJS","is_available":true}'
 
 # Частично изменить цену и доступность, сохранив остальные поля.
-curl -i -X PATCH http://localhost:8080/restaurants/1/items/1 \
+curl -i -X PATCH http://localhost:8080/restaurants/1/items/1 -H 'X-Dev-User-ID: 1' \
   -H 'Content-Type: application/json' \
   -d '{"price_minor":7000,"is_available":false}'
 
 curl -i http://localhost:8080/restaurants/1/menu
 
 # Soft delete: 204, строка в БД сохраняется, публичное меню её больше не возвращает.
-curl -i -X DELETE http://localhost:8080/restaurants/1/items/1
+curl -i -X DELETE http://localhost:8080/restaurants/1/items/1 -H 'X-Dev-User-ID: 1'
 ```
 
 Пример публичного ответа:
@@ -389,9 +392,9 @@ application-порт, PostgreSQL-адаптер и SQL-миграцию. Зат�
 HTTP и интеграционные тесты и документацию. Не добавляйте слои, которые лишь
 пересылают вызовы, и не переносите бизнес-правила в handlers или SQL-адаптеры.
 
-Это foundation сервиса, а не завершённая публичная платформа: аутентификация и
-авторизация не входят в текущий модуль. Compose предназначен для локальной
-разработки; боевое окружение должно отдельно задавать secrets, TLS и доступ к БД.
+Production использует OIDC и серверные resource grants. Compose предназначен для
+локальной разработки; боевое окружение отдельно задаёт identity registry, secrets,
+TLS и доступ к БД. См. [настройку OIDC](docs/security-reliability.md).
 
 
 ## Order Service: запуск и API
@@ -401,10 +404,10 @@ HTTP и интеграционные тесты и документацию. Н�
 На свежей базе ресторан 1 открыт. Создайте категорию и блюдо, затем заказ:
 
 ```bash
-curl -sS -X POST http://localhost:8080/restaurants/1/categories \
+curl -sS -X POST http://localhost:8080/restaurants/1/categories -H 'X-Dev-User-ID: 1' \
   -H 'Content-Type: application/json' -d '{"name":"Основное","sort_order":0}'
 # Подставьте фактический category_id из ответа (на свежей базе — 1).
-curl -sS -X POST http://localhost:8080/restaurants/1/items \
+curl -sS -X POST http://localhost:8080/restaurants/1/items -H 'X-Dev-User-ID: 1' \
   -H 'Content-Type: application/json' \
   -d '{"category_id":1,"name":"Плов","description":"","price_minor":6500,"currency":"TJS","is_available":true}'
 # Подставьте menu_item_id из ответа (на свежей базе — 1).
@@ -477,12 +480,11 @@ Quote не резервирует блюда: доступность и цена
 
 ### Identity и границы production
 
-X-Dev-Customer-ID работает только при явном DEV_AUTH_ENABLED=true и
-APP_ENV=development/test. Production с этой настройкой не запускается. При
-DEV_AUTH_ENABLED=false order endpoints возвращают 401: настоящая аутентификация
-ещё не подключена. Локальный заголовок допускает подмену ID и не является
-защищённым API. Compose публикует сервисы на 127.0.0.1; административный Catalog
-также пока требует отдельной авторизации перед публичным deployment.
+Dev headers работают только при явном DEV_AUTH_ENABLED=true и
+APP_ENV=development/test. Production с dev mode не запускается. При false нужны
+OIDC_ISSUER, OIDC_AUDIENCE, OIDC_JWKS_URL и серверный AUTH_IDENTITIES_FILE.
+Роли и ownership определяются серверной привязкой issuer/subject к внутренним ID.
+Подробности: [identity и resource authorization](docs/security-reliability.md).
 
 ### Проверки Orders и миграции
 
@@ -500,7 +502,7 @@ HTTP DTO и ошибки, реальный HTTP Catalog adapter, атомарн�
 конкурентное создание/отмена, CHECK/FK, изменение цены и снимки, replay после
 перезапуска/отказа Catalog, изоляция пользователей и up/down/up миграции Orders.
 Для Orders schema_migrations независима от Catalog; текущая миграция Orders —
-000005, Catalog — 000003, Notifications — 000004, Delivery — 000003. Миграции не применяются из Go-приложения.
+000006, Catalog — 000003, Notifications — 000005, Delivery — 000004. Миграции не применяются из Go-приложения.
 
 Подробные объяснения Aggregate Root, собственного хранилища, транзакций,
 идемпотентности, направлений зависимостей и схема последовательности:
@@ -581,7 +583,7 @@ docker compose --env-file .env -f deploy/compose.yaml exec notifications-postgre
   'SELECT event_id,order_id,aggregate_version,kind,status,correlation_id FROM notifications ORDER BY id;'
 docker compose --env-file .env -f deploy/compose.yaml exec notifications-postgres \
   psql -U notifications_service -d notifications -c \
-  'SELECT id,topic,partition,offset_value,reason,attempts,status FROM failed_messages ORDER BY id;'
+  'SELECT id,topic,partition,offset_value,reason,attempts,resolved_at FROM consumer_quarantine ORDER BY id;'
 ```
 
 Запись DEAD сохраняется вместе с исходным событием и блокирует последующие версии
@@ -592,7 +594,7 @@ docker compose --env-file .env -f deploy/compose.yaml run --rm --no-deps \
   outbox -requeue EVENT_UUID
 # После исправления причины/добавления поддержки схемы повторить карантин ID=1:
 docker compose --env-file .env -f deploy/compose.yaml run --rm --no-deps \
-  notifications -replay-failed 1
+  notifications -replay-parked 1 -operator alice -resolution-note 'Contract support deployed; incident INC-123'
 ```
 
 Карантин хранит исходные bytes и координаты Kafka, а не логи с payload.
@@ -675,3 +677,18 @@ SAGA_CANCEL_BEFORE_PREPARING разрешает запрос компенсац�
 retry/resume. Компенсация — идемпотентная Kafka-команда с ответом, а не SQL rollback.
 В `.env.example` добавлены DELIVERY_COMMANDS_TOPIC и SAGA_*; полный порядок
 обновления существующих данных и API диагностики — в руководстве выше.
+
+
+## Security и проверки CI
+
+[Полный runbook этапа 9](docs/security-reliability.md) описывает OIDC, роли,
+серверные bindings, quarantine/fence и operational replay. Production consumers
+сохраняют зависимые сообщения до ручного восстановления; простой DLQ-and-continue
+не используется. При открытом карантине `/ready` consumer возвращает 503.
+
+```bash
+./scripts/check.sh
+./scripts/test-integration.sh
+```
+
+GitHub Actions запускает эти же проверки на Pull Request и push в main.

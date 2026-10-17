@@ -16,8 +16,7 @@ func (h *handler) registerPublicMenuRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/restaurants/{restaurantId}/menu", h.methodNotAllowed("GET, HEAD"))
 }
 
-// Administrative routes are NOT authorized yet. Add authorization at this boundary
-// before exposing mutations to untrusted clients; separate registration is not security.
+// Each mutation checks the authenticated principal and restaurant grant.
 func (h *handler) registerAdministrativeMenuRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /restaurants/{restaurantId}/categories", h.createCategory)
 	mux.HandleFunc("PATCH /restaurants/{restaurantId}/categories/{categoryId}", h.updateCategory)
@@ -202,6 +201,10 @@ func (h *handler) decodeCategory(w http.ResponseWriter, r *http.Request) (domain
 }
 
 func (h *handler) createCategory(w http.ResponseWriter, r *http.Request) {
+	grantID, _, _ := menuPathIDs(r, "")
+	if !h.authorize(w, r, grantID) {
+		return
+	}
 	restaurantID, _, err := menuPathIDs(r, "")
 	if err != nil {
 		h.handleError(w, err)
@@ -229,6 +232,10 @@ func (h *handler) createCategory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) updateCategory(w http.ResponseWriter, r *http.Request) {
+	grantID, _, _ := menuPathIDs(r, "")
+	if !h.authorize(w, r, grantID) {
+		return
+	}
 	restaurantID, categoryID, err := menuPathIDs(r, "categoryId")
 	if err != nil {
 		h.handleError(w, err)
@@ -260,6 +267,10 @@ func (h *handler) decodeItem(w http.ResponseWriter, r *http.Request) (domain.Men
 }
 
 func (h *handler) createItem(w http.ResponseWriter, r *http.Request) {
+	grantID, _, _ := menuPathIDs(r, "")
+	if !h.authorize(w, r, grantID) {
+		return
+	}
 	restaurantID, _, err := menuPathIDs(r, "")
 	if err != nil {
 		h.handleError(w, err)
@@ -300,6 +311,10 @@ func (h *handler) createItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) updateItem(w http.ResponseWriter, r *http.Request) {
+	grantID, _, _ := menuPathIDs(r, "")
+	if !h.authorize(w, r, grantID) {
+		return
+	}
 	restaurantID, itemID, err := menuPathIDs(r, "itemId")
 	if err != nil {
 		h.handleError(w, err)
@@ -318,6 +333,10 @@ func (h *handler) updateItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) deleteItem(w http.ResponseWriter, r *http.Request) {
+	grantID, _, _ := menuPathIDs(r, "")
+	if !h.authorize(w, r, grantID) {
+		return
+	}
 	restaurantID, itemID, err := menuPathIDs(r, "itemId")
 	if err != nil {
 		h.handleError(w, err)

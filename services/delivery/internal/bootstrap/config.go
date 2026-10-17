@@ -8,9 +8,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"example.com/food/platform/security"
 )
 
 type Config struct {
+	Authentication    security.Config
 	DispatcherIDs     []int64
 	AppEnv            string
 	DevAuthEnabled    bool
@@ -101,6 +104,11 @@ func LoadConfig() (Config, error) {
 	if c.WriteTimeout <= c.RequestTimeout {
 		return c, errors.New("HTTP_WRITE_TIMEOUT must exceed REQUEST_TIMEOUT")
 	}
+	authentication, authErr := security.Load()
+	if authErr != nil {
+		return c, authErr
+	}
+	c.Authentication = authentication
 	return c, nil
 }
 

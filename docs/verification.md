@@ -339,3 +339,127 @@ Outbox/Inbox/creation responses не переписаны. Существующ�
 production identity provider ещё не подключён; Notifications сохраняет PENDING
 intents без фактического SMS/email provider. POS — операционное заявление,
 банковская проверка и сверка не добавлены.
+
+
+## Этап 9: Security & Reliability Hardening — 2026-10-18
+
+Финальный локальный эквивалент обоих CI jobs выполнен успешно:
+
+- `./scripts/check.sh`: PASS — gofmt, vet, unit/HTTP tests, race, GOWORK=off build
+  всех шести модулей, validation полного и тестового Compose без вывода конфигурации.
+- `./scripts/test-integration.sh`: PASS — реальные PostgreSQL 18 и Redpanda,
+  up/down миграций четырёх сервисов, все модули с race, vet и очистка стенда.
+- `python3 scripts/verify-pickup.py`: PASS — PICKUP без Delivery/Saga, POS handoff,
+  токены, immutable creation retries после restart, Kafka и DELIVERY/Saga/POS.
+- `python3 scripts/verify-saga.py`: PASS — restart/retry, preparation gate,
+  отказ/переназначение курьера, timeout compensation, запрет автоотмены после готовки,
+  отмены ресторана/клиента, offline courier, POS и command replay.
+- `python3 scripts/verify-events.py`: PASS — остановка/восстановление брокера,
+  два Outbox workers, HTTP idempotency, cancellation, повторная публикация,
+  Inbox deduplication, correlation IDs и PENDING intents.
+- Новый `TestKafkaPoisonParkingRestartAndBusinessRecovery`: PASS с race на
+  настоящем broker/PostgreSQL — crash после durable parking до offset commit,
+  повтор того же offset после restart, fence зависимой команды и audit replay
+  с единственными Delivery/command Inbox.
+- Security tests: PASS — подпись/issuer/audience/exp/nbf, unsigned/malformed JWT,
+  HS256 rejection, wrong RSA signature, JWKS kid rotation, opaque subject mapping,
+  игнорирование spoofed roles/customer_id, запрет всех dev headers в production,
+  anonymous Catalog mutation/чужой ресторан/чужая доставка, scoped dispatcher grants.
+- Quarantine tests трёх сервисов: PASS — durable fence после restart, replay audit,
+  неизменность original bytes, сбой parking без разрешения offset commit,
+  восстановление temporary failure, concurrent workers, отмена lock context,
+  запрет downgrade с audit/парковкой. Проверены прежние бизнес-регрессии всех модулей.
+- `sh -n`, Python AST parsing тестовых scripts и `git diff --check`: PASS.
+
+Один дополнительный общий прогон на фоне Docker E2E встретил временный producer
+record timeout в прежнем `TestOutboxKafkaAcknowledgementCrashAndRecovery`.
+Изолированный запуск этого теста `-race -count=3` прошёл три раза, последующий
+финальный `scripts/test-integration.sh` прошёл полностью. Producer timeout и
+бизнес-код Outbox ради обхода этой ошибки не менялись. Первичные sandbox-отказы
+loopback/Docker были устранены запуском проверок с разрешённым доступом.
+
+GitHub-hosted Actions ещё не выполнялся: workflow добавлен, Git commit/push
+не выполнялись. Не проверялось подключение конкретного production IdP:
+проверка JWT/JWKS использовала локальный настоящий HTTP JWKS server с RSA keys.
+Временные Compose проекты удалены. Production registry, TLS и мониторинг очереди
+должен настроить оператор. Service-wide fence намеренно ограничивает throughput
+и блокирует business consumption всего сервиса до audited recovery; grants
+обновляются перезапуском API. Детали и команды — [runbook](security-reliability.md).
+
+### Изменённые файлы этапа 9
+
+- [.env.example](../.env.example)
+- [.github/workflows/ci.yml](../.github/workflows/ci.yml)
+- [AGENTS.md](../AGENTS.md)
+- [README.md](../README.md)
+- [contracts/delivery/commands/v1/command.go](../contracts/delivery/commands/v1/command.go)
+- [contracts/delivery/v1/event.go](../contracts/delivery/v1/event.go)
+- [deploy/auth-identities.example.json](../deploy/auth-identities.example.json)
+- [deploy/compose.yaml](../deploy/compose.yaml)
+- [docs/adr/0006-security-and-consumer-quarantine.md](../docs/adr/0006-security-and-consumer-quarantine.md)
+- [docs/architecture.md](../docs/architecture.md)
+- [docs/security-reliability.md](../docs/security-reliability.md)
+- [docs/verification.md](../docs/verification.md)
+- [go.work](../go.work)
+- [go.work.sum](../go.work.sum)
+- [platform/go.mod](../platform/go.mod)
+- [platform/go.sum](../platform/go.sum)
+- [platform/security/security.go](../platform/security/security.go)
+- [platform/security/security_test.go](../platform/security/security_test.go)
+- [scripts/check-migrations.sh](../scripts/check-migrations.sh)
+- [scripts/check.sh](../scripts/check.sh)
+- [scripts/test-integration.sh](../scripts/test-integration.sh)
+- [scripts/verify-events.py](../scripts/verify-events.py)
+- [scripts/verify-pickup.py](../scripts/verify-pickup.py)
+- [services/catalog/Dockerfile](../services/catalog/Dockerfile)
+- [services/catalog/go.mod](../services/catalog/go.mod)
+- [services/catalog/go.sum](../services/catalog/go.sum)
+- [services/catalog/internal/adapters/http/handler.go](../services/catalog/internal/adapters/http/handler.go)
+- [services/catalog/internal/adapters/http/handler_test.go](../services/catalog/internal/adapters/http/handler_test.go)
+- [services/catalog/internal/adapters/http/menu.go](../services/catalog/internal/adapters/http/menu.go)
+- [services/catalog/internal/adapters/http/menu_test.go](../services/catalog/internal/adapters/http/menu_test.go)
+- [services/catalog/internal/adapters/http/security_test.go](../services/catalog/internal/adapters/http/security_test.go)
+- [services/catalog/internal/bootstrap/config.go](../services/catalog/internal/bootstrap/config.go)
+- [services/catalog/internal/bootstrap/run.go](../services/catalog/internal/bootstrap/run.go)
+- [services/delivery/Dockerfile](../services/delivery/Dockerfile)
+- [services/delivery/README.md](../services/delivery/README.md)
+- [services/delivery/cmd/consumer/main.go](../services/delivery/cmd/consumer/main.go)
+- [services/delivery/go.mod](../services/delivery/go.mod)
+- [services/delivery/go.sum](../services/delivery/go.sum)
+- [services/delivery/internal/adapters/http/handler.go](../services/delivery/internal/adapters/http/handler.go)
+- [services/delivery/internal/adapters/http/security_test.go](../services/delivery/internal/adapters/http/security_test.go)
+- [services/delivery/internal/adapters/postgres/consumer_quarantine.go](../services/delivery/internal/adapters/postgres/consumer_quarantine.go)
+- [services/delivery/internal/adapters/postgres/consumer_quarantine_integration_test.go](../services/delivery/internal/adapters/postgres/consumer_quarantine_integration_test.go)
+- [services/delivery/internal/adapters/postgres/delivery_integration_test.go](../services/delivery/internal/adapters/postgres/delivery_integration_test.go)
+- [services/delivery/internal/adapters/postgres/kafka_integration_test.go](../services/delivery/internal/adapters/postgres/kafka_integration_test.go)
+- [services/delivery/internal/adapters/postgres/security_integration_test.go](../services/delivery/internal/adapters/postgres/security_integration_test.go)
+- [services/delivery/internal/application/inbox.go](../services/delivery/internal/application/inbox.go)
+- [services/delivery/internal/bootstrap/config.go](../services/delivery/internal/bootstrap/config.go)
+- [services/delivery/internal/bootstrap/consumer.go](../services/delivery/internal/bootstrap/consumer.go)
+- [services/delivery/internal/bootstrap/run.go](../services/delivery/internal/bootstrap/run.go)
+- [services/delivery/migrations/000004_consumer_quarantine.down.sql](../services/delivery/migrations/000004_consumer_quarantine.down.sql)
+- [services/delivery/migrations/000004_consumer_quarantine.up.sql](../services/delivery/migrations/000004_consumer_quarantine.up.sql)
+- [services/notifications/cmd/consumer/main.go](../services/notifications/cmd/consumer/main.go)
+- [services/notifications/internal/adapters/postgres/consumer_quarantine.go](../services/notifications/internal/adapters/postgres/consumer_quarantine.go)
+- [services/notifications/internal/adapters/postgres/consumer_quarantine_integration_test.go](../services/notifications/internal/adapters/postgres/consumer_quarantine_integration_test.go)
+- [services/notifications/internal/adapters/postgres/inbox_integration_test.go](../services/notifications/internal/adapters/postgres/inbox_integration_test.go)
+- [services/notifications/internal/application/consumer.go](../services/notifications/internal/application/consumer.go)
+- [services/notifications/internal/bootstrap/run.go](../services/notifications/internal/bootstrap/run.go)
+- [services/notifications/migrations/000005_consumer_quarantine.down.sql](../services/notifications/migrations/000005_consumer_quarantine.down.sql)
+- [services/notifications/migrations/000005_consumer_quarantine.up.sql](../services/notifications/migrations/000005_consumer_quarantine.up.sql)
+- [services/orders/Dockerfile](../services/orders/Dockerfile)
+- [services/orders/cmd/consumer/main.go](../services/orders/cmd/consumer/main.go)
+- [services/orders/go.mod](../services/orders/go.mod)
+- [services/orders/go.sum](../services/orders/go.sum)
+- [services/orders/internal/adapters/http/handler.go](../services/orders/internal/adapters/http/handler.go)
+- [services/orders/internal/adapters/http/restaurants.go](../services/orders/internal/adapters/http/restaurants.go)
+- [services/orders/internal/adapters/http/security_test.go](../services/orders/internal/adapters/http/security_test.go)
+- [services/orders/internal/adapters/postgres/consumer_quarantine.go](../services/orders/internal/adapters/postgres/consumer_quarantine.go)
+- [services/orders/internal/adapters/postgres/consumer_quarantine_integration_test.go](../services/orders/internal/adapters/postgres/consumer_quarantine_integration_test.go)
+- [services/orders/internal/adapters/postgres/orders_integration_test.go](../services/orders/internal/adapters/postgres/orders_integration_test.go)
+- [services/orders/internal/application/delivery_consumer.go](../services/orders/internal/application/delivery_consumer.go)
+- [services/orders/internal/bootstrap/config.go](../services/orders/internal/bootstrap/config.go)
+- [services/orders/internal/bootstrap/consumer.go](../services/orders/internal/bootstrap/consumer.go)
+- [services/orders/internal/bootstrap/run.go](../services/orders/internal/bootstrap/run.go)
+- [services/orders/migrations/000006_consumer_quarantine.down.sql](../services/orders/migrations/000006_consumer_quarantine.down.sql)
+- [services/orders/migrations/000006_consumer_quarantine.up.sql](../services/orders/migrations/000006_consumer_quarantine.up.sql)

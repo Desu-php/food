@@ -16,6 +16,7 @@ import (
 	events "example.com/food/contracts/orders/v1"
 	"example.com/food/orders/internal/application"
 	"example.com/food/orders/internal/domain"
+	"example.com/food/platform/security"
 )
 
 const maxBodyBytes = 64 << 10
@@ -144,6 +145,14 @@ func NewHandler(orders *application.Orders, ready func(context.Context) error, l
 }
 
 func (h *handler) customer(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	if p, ok := security.FromContext(r.Context()); ok && p.Subject != "" {
+		if p.Has("customer") && p.CustomerID > 0 {
+			return p.CustomerID, true
+		}
+		h.writeError(w, 403, "customer access denied")
+		return 0, false
+	}
+
 	if !h.devAuth {
 		h.writeError(w, 401, "authentication required; production identity integration is not configured")
 		return 0, false

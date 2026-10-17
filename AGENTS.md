@@ -54,7 +54,7 @@ without implementing it.
 ## Current scope
 
 Production Foundation, Catalog, Orders, Notifications, Restaurant Order
-Fulfillment Saga orchestration, PICKUP and Delivery with operational POS collection. Future modules require
+Fulfillment Saga orchestration, PICKUP and Delivery with operational POS collection, Security & Reliability Hardening. Future modules require
 separate tasks. The user's current explicit instructions take precedence over this file.
 
 ## MVP payment and fulfillment decision
@@ -135,3 +135,25 @@ creation responses, including exact retries of historical requests without a
 fulfillment type; never accept that shape for a new creation. Historical delivery addresses stay explicitly unknown; do not
 invent addresses, pickup facts or payment confirmations during migration.
 See docs/adr/0005-pickup-and-delivery.md and docs/pickup.md.
+
+
+## Stage 9: security and consumer reliability
+
+HTTP mutations require an authenticated server-mapped principal. OIDC uses trusted
+HTTPS issuer/JWKS and distinct API audiences; allow only RS256/ES256 and require
+expiration. Never parse JWT subject as a numeric business ID or authorize from
+client-selected roles/restaurant/courier claims. Keep the deployment-owned identity
+registry and explicit restaurant/dispatcher permissions; no User Service is needed.
+Production must fail closed; dev identities require development/test opt-in.
+
+Preserve transactional Inbox/Outbox and historical canonical contracts. Production
+consumers park poison and dependent messages durably behind a service-wide fence,
+including both Delivery input streams; offset commit follows business or parking
+commit. Never bypass the fence, silently skip a version or invent facts during
+recovery. Operational replay requires audit and uses the original domain gates.
+Monitor open consumer_quarantine even when Kafka lag is low. See
+[security/recovery runbook](docs/security-reliability.md) and
+[ADR 0006](docs/adr/0006-security-and-consumer-quarantine.md).
+
+Run scripts/check.sh and scripts/test-integration.sh; CI covers every Go module,
+independent builds, PostgreSQL/Redpanda, migration round trips and Compose validation.

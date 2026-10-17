@@ -8,27 +8,32 @@ import (
 
 	"example.com/food/orders/internal/application"
 	"example.com/food/orders/internal/domain"
+	"example.com/food/platform/security"
 )
 
 func (h *handler) restaurantAction(w http.ResponseWriter, r *http.Request) {
-	if !h.devAuth {
-		h.writeError(w, 401, "authentication required")
-		return
-	}
-	values := r.Header.Values("X-Dev-User-ID")
-	if len(values) != 1 {
-		h.writeError(w, 401, "dev user identity required")
-		return
-	}
-	user, err := strconv.ParseInt(values[0], 10, 64)
-	if err != nil || user <= 0 {
-		h.writeError(w, 401, "invalid identity")
+	user, ok := h.restaurantIdentity(w, r)
+	if !ok {
 		return
 	}
 	restaurant, err := strconv.ParseInt(r.PathValue("restaurant"), 10, 64)
 	if err != nil || restaurant <= 0 {
 		h.handleError(w, application.ErrInvalidRequest)
 		return
+	}
+
+	if p, ok := security.FromContext(r.Context()); ok && p.Subject != "" {
+		allowed := (p.Has("restaurant_staff") || p.Has("admin")) && p.Restaurant(restaurant)
+		if r.Method == http.MethodGet && r.PathValue("id") != "" {
+			allowed = allowed || (p.Has("dispatcher") && p.Can("saga:retry") && p.Restaurant(restaurant))
+		}
+		if r.PathValue("action") == "retry" {
+			allowed = (p.Has("dispatcher") || p.Has("admin")) && p.Can("saga:retry") && p.Restaurant(restaurant)
+		}
+		if !allowed {
+			h.writeError(w, 403, "restaurant access denied")
+			return
+		}
 	}
 	if h.restaurants == nil {
 		h.writeError(w, 403, "restaurant access denied")
@@ -144,4 +149,25 @@ type sagaDTO struct {
 
 func toSagaDTO(s domain.Saga) sagaDTO {
 	return sagaDTO{s.OrderID, s.State, s.Version, s.DeliveryID, s.DeliveryVersion, s.CourierID, s.Attempts, s.Deadline, s.NextAttempt, s.Reason, s.CancelReason, s.UpdatedAt}
+}
+
+func (h *handler) restaurantIdentity(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	if p, ok := security.FromContext(r.Context()); ok && p.Subject != "" {
+		return p.UserID, true
+	}
+	if !h.devAuth {
+		h.writeError(w, 401, "authentication required")
+		return 0, false
+	}
+	values := r.Header.Values("X-Dev-User-ID")
+	if len(values) != 1 {
+		h.writeError(w, 401, "identity required")
+		return 0, false
+	}
+	id, err := strconv.ParseInt(values[0], 10, 64)
+	if err != nil || id <= 0 {
+		h.writeError(w, 401, "invalid identity")
+		return 0, false
+	}
+	return id, true
 }

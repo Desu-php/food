@@ -31,6 +31,7 @@ type InboxRepository interface {
 	ProcessCommand(context.Context, commands.Command) error
 }
 type Consumer struct {
+	processor                func(context.Context, Message) error
 	source                   MessageSource
 	repo                     InboxRepository
 	logger                   *slog.Logger
@@ -45,9 +46,9 @@ func NewConsumer(source MessageSource, repo InboxRepository, logger ...*slog.Log
 	return c
 }
 
-// A failure stops consumption without acknowledging this record or any later offset.
-// Restart/retry replays the same record; Inbox and business effects share one transaction.
-func (c *Consumer) Process(ctx context.Context, m Message) (err error) {
+// Handle applies one record without acknowledging Kafka. Production bootstrap
+// adds bounded retries and durable parking; business effects share the Inbox transaction.
+func (c *Consumer) Handle(ctx context.Context, m Message) (err error) {
 	if m.Topic == c.commandTopic {
 		command, decodeErr := commands.Decode(m.Body)
 		defer func() {
@@ -63,9 +64,6 @@ func (c *Consumer) Process(ctx context.Context, m Message) (err error) {
 		}
 		ctx = correlation.WithID(ctx, command.CorrelationID)
 		if err = c.repo.ProcessCommand(ctx, command); err != nil {
-			return err
-		}
-		if err = c.source.Commit(ctx, m); err != nil {
 			return err
 		}
 		if c.logger != nil {
@@ -110,7 +108,7 @@ func (c *Consumer) Process(ctx context.Context, m Message) (err error) {
 	if err = c.repo.ProcessOrder(ctx, e); err != nil {
 		return err
 	}
-	return c.source.Commit(ctx, m)
+	return nil
 }
 func (c *Consumer) Run(ctx context.Context) error {
 	for ctx.Err() == nil {
@@ -121,9 +119,13 @@ func (c *Consumer) Run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		op, cancel := context.WithTimeout(ctx, 10*time.Second)
-		err = c.Process(op, m)
-		cancel()
+		if c.processor != nil {
+			err = c.processor(ctx, m)
+		} else {
+			op, cancel := context.WithTimeout(ctx, 10*time.Second)
+			err = c.Process(op, m)
+			cancel()
+		}
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -138,5 +140,17 @@ func (c *Consumer) Run(ctx context.Context) error {
 func (c Consumer) WithTopics(orderTopic, commandTopic string) *Consumer {
 	c.orderTopic = orderTopic
 	c.commandTopic = commandTopic
+	return &c
+}
+
+// Process acknowledges only after the application transaction completes.
+func (c *Consumer) Process(ctx context.Context, m Message) error {
+	if err := c.Handle(ctx, m); err != nil {
+		return err
+	}
+	return c.source.Commit(ctx, m)
+}
+func (c Consumer) WithProcessor(processor func(context.Context, Message) error) *Consumer {
+	c.processor = processor
 	return &c
 }

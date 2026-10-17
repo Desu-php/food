@@ -9,10 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"example.com/food/platform/security"
+
 	"example.com/food/orders/internal/application"
 )
 
 type Config struct {
+	Authentication    security.Config
 	Saga              application.SagaConfig
 	RestaurantGrants  map[int64][]int64
 	CatalogBaseURL    string
@@ -120,6 +123,11 @@ func LoadConfig() (Config, error) {
 		return c, err
 	}
 	c.Saga = policy
+	authentication, authErr := security.Load()
+	if authErr != nil {
+		return c, authErr
+	}
+	c.Authentication = authentication
 	return c, nil
 }
 

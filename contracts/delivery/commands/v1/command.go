@@ -4,6 +4,7 @@ package commands
 import (
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -17,6 +18,8 @@ const (
 	CreateDelivery = "CreateDelivery"
 	CancelDelivery = "CancelDelivery"
 )
+
+var ErrUnsupported = errors.New("unsupported delivery contract")
 
 var ErrInvalid = errors.New("invalid delivery command")
 
@@ -55,6 +58,9 @@ func Decode(body []byte) (Command, error) {
 	var c Command
 	if len(body) > orders.MaxMessageBytes || json.Unmarshal(body, &c) != nil {
 		return c, ErrInvalid
+	}
+	if c.SchemaVersion != 1 || !slices.Contains([]string{CreateDelivery, CancelDelivery}, c.CommandType) {
+		return c, errors.Join(ErrInvalid, ErrUnsupported)
 	}
 	return c, c.Validate()
 }

@@ -18,7 +18,7 @@ import (
 
 const consumerSchemaCheck = `SELECT i.event_id,s.order_id,s.delivery_version,o.courier_id FROM delivery_inbox i LEFT JOIN order_sagas s ON false LEFT JOIN orders o ON false LIMIT 0`
 
-func RunConsumer(ctx context.Context, c ConsumerConfig, logger *slog.Logger) error {
+func RunConsumer(ctx context.Context, c ConsumerConfig, logger *slog.Logger, replay ...ReplayOptions) error {
 	cfg, err := pgxpool.ParseConfig(c.DatabaseURL)
 	if err != nil {
 		return errors.New("invalid DATABASE_URL")
@@ -31,7 +31,7 @@ func RunConsumer(ctx context.Context, c ConsumerConfig, logger *slog.Logger) err
 	}
 	defer pool.Close()
 	check, cancel := context.WithTimeout(ctx, c.OperationTimeout)
-	_, err = pool.Exec(check, consumerSchemaCheck)
+	_, err = pool.Exec(check, consumerSchemaCheck+`; SELECT id FROM consumer_quarantine LIMIT 0`)
 	cancel()
 	if err != nil {
 		return errors.New("orders fulfillment startup check failed: check connectivity and migrations")
@@ -41,15 +41,42 @@ func RunConsumer(ctx context.Context, c ConsumerConfig, logger *slog.Logger) err
 		return err
 	}
 	repo := postgres.NewOrders(pool, application.NewFulfillment(policy))
-	maxPoll := time.Minute
+
+	consumerStore := postgres.NewConsumerInbox(pool, logger)
+	handler := application.NewConsumer(nil, repo, logger).Handle
+	if len(replay) > 0 && replay[0].ID != 0 {
+		op, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		o := replay[0]
+		if err := consumerStore.Replay(op, o.ID, o.Operator, o.Note, o.Body, o.Key, handler); err != nil {
+			return errors.New("consumer replay failed: inspect structured logs and replay audit")
+		}
+		return nil
+	}
+	maxPoll := 2 * time.Minute
 	source, err := kafka.NewConsumer(c.Brokers, c.Topic, c.Group, maxPoll)
 	if err != nil {
 		return err
 	}
 	defer source.Close()
+	process := func(ctx context.Context, m application.Message) error {
+		if err := consumerStore.Process(ctx, m, handler); err != nil {
+			return err
+		}
+		commit, cancel := context.WithTimeout(ctx, c.OperationTimeout)
+		defer cancel()
+		err := source.Commit(commit, m)
+		if err != nil {
+			consumerStore.LogCommitFailure(m)
+		}
+		return err
+	}
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
 	ready := func(ctx context.Context) error {
+		if err := consumerStore.Ready(ctx); err != nil {
+			return err
+		}
 		if _, err := pool.Exec(ctx, consumerSchemaCheck); err != nil {
 			return err
 		}
@@ -69,7 +96,7 @@ func RunConsumer(ctx context.Context, c ConsumerConfig, logger *slog.Logger) err
 		}
 		done <- err
 	}()
-	go func() { done <- application.NewConsumer(source, repo, logger).Run(runCtx) }()
+	go func() { done <- application.NewConsumer(source, repo, logger).WithProcessor(process).Run(runCtx) }()
 	logger.Info("orders fulfillment started", "topic", c.Topic, "consumer_group", c.Group, "address", listener.Addr().String())
 	var first error
 	completed := 0
@@ -95,4 +122,10 @@ func RunConsumer(ctx context.Context, c ConsumerConfig, logger *slog.Logger) err
 		return errors.New("fulfillment consumer stopped: inspect structured processing logs and database connectivity")
 	}
 	return err
+}
+
+type ReplayOptions struct {
+	ID             int64
+	Operator, Note string
+	Body, Key      []byte
 }

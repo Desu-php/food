@@ -8,8 +8,9 @@ import time
 import urllib.request
 
 ROOT = Path(__file__).resolve().parent.parent
-ENV = dict(os.environ, POSTGRES_PORT="25432", CATALOG_PORT="28080",
-           ORDERS_PORT="28081", NOTIFICATIONS_PORT="28083", DELIVERY_PORT="28085",
+ENV = dict(os.environ, APP_ENV="test", DEV_AUTH_ENABLED="true",
+           OIDC_ISSUER="", OIDC_JWKS_URL="", AUTH_IDENTITIES_FILE="", POSTGRES_PORT="25432", CATALOG_PORT="28080",
+           DEV_ADMIN_IDS="1", ORDERS_PORT="28081", NOTIFICATIONS_PORT="28083", DELIVERY_PORT="28085",
            NOTIFICATIONS_DB_PORT="25433", KAFKA_EXTERNAL_PORT="39092",
            KAFKA_PUBLISH_TIMEOUT="3s", OUTBOX_RETRY_BASE="100ms",
            OUTBOX_RETRY_MAX="1s", OUTBOX_MAX_ATTEMPTS="100")
@@ -24,6 +25,8 @@ def compose(*args, capture=False):
 
 def request(port, path, body=None, headers=None):
     data = None if body is None else json.dumps(body).encode()
+    if port == 28080 and body is not None:
+        headers = {"X-Dev-User-ID": "1", **(headers or {})}
     req = urllib.request.Request(f"http://localhost:{port}{path}", data=data,
                                  headers={"Content-Type": "application/json", **(headers or {})})
     with urllib.request.urlopen(req, timeout=10) as response:

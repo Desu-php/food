@@ -14,6 +14,7 @@ import (
 
 	"example.com/food/catalog/internal/application"
 	"example.com/food/catalog/internal/domain"
+	"example.com/food/platform/security"
 )
 
 const maxBodyBytes = 64 << 10
@@ -258,6 +259,9 @@ func (h *handler) decode(w http.ResponseWriter, r *http.Request) (domain.Restaur
 }
 
 func (h *handler) create(w http.ResponseWriter, r *http.Request) {
+	if !h.authorize(w, r, 0) {
+		return
+	}
 	input, ok := h.decode(w, r)
 	if !ok {
 		return
@@ -288,6 +292,10 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) update(w http.ResponseWriter, r *http.Request) {
+	grantID, _ := restaurantID(r)
+	if !h.authorize(w, r, grantID) {
+		return
+	}
 	id, err := restaurantID(r)
 	if err != nil {
 		h.handleError(w, err)
@@ -356,4 +364,17 @@ func (h *handler) writeJSON(w http.ResponseWriter, status int, value any) {
 	if _, err := w.Write(append(body, '\n')); err != nil {
 		h.logger.Warn("write response failed")
 	}
+}
+
+func (h *handler) authorize(w http.ResponseWriter, r *http.Request, restaurant int64) bool {
+	p, ok := security.FromContext(r.Context())
+	if !ok {
+		h.writeError(w, 401, "authentication required")
+		return false
+	}
+	if p.Has("admin") || (restaurant > 0 && p.Has("restaurant_staff") && p.Restaurant(restaurant)) {
+		return true
+	}
+	h.writeError(w, 403, "restaurant access denied")
+	return false
 }

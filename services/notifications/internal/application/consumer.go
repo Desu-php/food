@@ -24,15 +24,16 @@ type ConsumerConfig struct {
 }
 
 type Consumer struct {
-	source  MessageSource
-	repo    InboxRepository
-	service *Notifications
-	cfg     ConsumerConfig
-	logger  *slog.Logger
+	processor func(context.Context, Message) error
+	source    MessageSource
+	repo      InboxRepository
+	service   *Notifications
+	cfg       ConsumerConfig
+	logger    *slog.Logger
 }
 
 func NewConsumer(source MessageSource, repo InboxRepository, cfg ConsumerConfig, logger *slog.Logger) *Consumer {
-	return &Consumer{source, repo, NewNotifications(repo), cfg, logger}
+	return &Consumer{source: source, repo: repo, service: NewNotifications(repo), cfg: cfg, logger: logger}
 }
 
 func retryDelay(attempt int, base, maximum time.Duration) time.Duration {
@@ -125,7 +126,11 @@ func (c *Consumer) Run(ctx context.Context) error {
 			c.logger.Error("kafka poll failed", "error_type", fmt.Sprintf("%T", err))
 			return fmt.Errorf("poll kafka: %w", err)
 		}
-		if err := c.Process(ctx, m); err != nil {
+		process := c.Process
+		if c.processor != nil {
+			process = c.processor
+		}
+		if err := process(ctx, m); err != nil {
 			if ctx.Err() != nil {
 				return nil
 			}
@@ -133,4 +138,9 @@ func (c *Consumer) Run(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (c Consumer) WithProcessor(processor func(context.Context, Message) error) *Consumer {
+	c.processor = processor
+	return &c
 }
