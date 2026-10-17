@@ -1,0 +1,485 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-catalog}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-catalog}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - catalog_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks: [backend, edge]
+
+  init-databases:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-catalog}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-catalog}
+      CATALOG_DB_PASSWORD: ${CATALOG_DB_PASSWORD:?set CATALOG_DB_PASSWORD in .env}
+      ORDERS_DB_PASSWORD: ${ORDERS_DB_PASSWORD:?set ORDERS_DB_PASSWORD in .env}
+      DELIVERY_DB_PASSWORD: ${DELIVERY_DB_PASSWORD:?set DELIVERY_DB_PASSWORD in .env}
+    volumes:
+      - ./init-databases.sh:/init-databases.sh:ro
+    entrypoint: ["/bin/sh", "/init-databases.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [backend]
+    restart: "no"
+
+  migrate:
+    image: migrate/migrate:v4.18.3
+    volumes:
+      - ../services/catalog/migrations:/migrations:ro
+    command:
+      - -path=/migrations
+      - -database=postgres://catalog_service:${CATALOG_DB_PASSWORD:?set CATALOG_DB_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-catalog}?sslmode=disable
+      - up
+    depends_on:
+      init-databases:
+        condition: service_completed_successfully
+    networks: [backend]
+    restart: "no"
+
+  catalog:
+    build:
+      context: ../services/catalog
+    environment:
+      DATABASE_URL: postgres://catalog_service:${CATALOG_DB_PASSWORD:?set CATALOG_DB_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-catalog}?sslmode=disable
+      HTTP_ADDR: :8080
+      INTERNAL_HTTP_ADDR: catalog-internal:8082
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DB_MAX_CONNS: ${DB_MAX_CONNS:-10}
+      DB_MIN_CONNS: ${DB_MIN_CONNS:-0}
+      DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-5s}
+      DB_MAX_CONN_LIFETIME: ${DB_MAX_CONN_LIFETIME:-1h}
+      DB_MAX_CONN_IDLE_TIME: ${DB_MAX_CONN_IDLE_TIME:-5m}
+      HTTP_READ_HEADER_TIMEOUT: ${HTTP_READ_HEADER_TIMEOUT:-5s}
+      HTTP_READ_TIMEOUT: ${HTTP_READ_TIMEOUT:-10s}
+      HTTP_WRITE_TIMEOUT: ${HTTP_WRITE_TIMEOUT:-15s}
+      HTTP_IDLE_TIMEOUT: ${HTTP_IDLE_TIMEOUT:-60s}
+      REQUEST_TIMEOUT: ${REQUEST_TIMEOUT:-5s}
+      SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-10s}
+    ports:
+      - "127.0.0.1:${CATALOG_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    stop_grace_period: 20s
+    restart: unless-stopped
+
+    networks:
+      backend:
+        aliases: [catalog-internal]
+      edge: {}
+
+  migrate-orders:
+    image: migrate/migrate:v4.18.3
+    volumes:
+      - ../services/orders/migrations:/migrations:ro
+    command:
+      - -path=/migrations
+      - -database=postgres://orders_service:${ORDERS_DB_PASSWORD:?set ORDERS_DB_PASSWORD in .env}@postgres:5432/orders?sslmode=disable
+      - up
+    depends_on:
+      init-databases:
+        condition: service_completed_successfully
+    networks: [backend]
+    restart: "no"
+
+  orders:
+    build:
+      context: ..
+      dockerfile: services/orders/Dockerfile
+    environment:
+      DATABASE_URL: postgres://orders_service:${ORDERS_DB_PASSWORD:?set ORDERS_DB_PASSWORD in .env}@postgres:5432/orders?sslmode=disable
+      HTTP_ADDR: :8081
+      CATALOG_BASE_URL: http://catalog-internal:8082
+      CATALOG_TIMEOUT: ${CATALOG_TIMEOUT:-2s}
+      APP_ENV: ${APP_ENV:-development}
+      DEV_AUTH_ENABLED: ${DEV_AUTH_ENABLED:-true}
+      DEV_RESTAURANT_GRANTS: ${DEV_RESTAURANT_GRANTS:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SAGA_CREATE_TIMEOUT: ${SAGA_CREATE_TIMEOUT:-5m}
+      SAGA_ASSIGNMENT_TIMEOUT: ${SAGA_ASSIGNMENT_TIMEOUT:-10m}
+      SAGA_PROGRESS_TIMEOUT: ${SAGA_PROGRESS_TIMEOUT:-30m}
+      SAGA_CANCEL_TIMEOUT: ${SAGA_CANCEL_TIMEOUT:-5m}
+      SAGA_RETRY_BASE: ${SAGA_RETRY_BASE:-1s}
+      SAGA_RETRY_MAX: ${SAGA_RETRY_MAX:-30s}
+      SAGA_MAX_ATTEMPTS: ${SAGA_MAX_ATTEMPTS:-20}
+      SAGA_POLL_INTERVAL: ${SAGA_POLL_INTERVAL:-1s}
+      SAGA_CANCEL_BEFORE_PREPARING: ${SAGA_CANCEL_BEFORE_PREPARING:-false}
+      DB_MAX_CONNS: ${DB_MAX_CONNS:-10}
+      DB_MIN_CONNS: ${DB_MIN_CONNS:-0}
+      DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-5s}
+      DB_MAX_CONN_LIFETIME: ${DB_MAX_CONN_LIFETIME:-1h}
+      DB_MAX_CONN_IDLE_TIME: ${DB_MAX_CONN_IDLE_TIME:-5m}
+      HTTP_READ_HEADER_TIMEOUT: ${HTTP_READ_HEADER_TIMEOUT:-5s}
+      HTTP_READ_TIMEOUT: ${HTTP_READ_TIMEOUT:-10s}
+      HTTP_WRITE_TIMEOUT: ${HTTP_WRITE_TIMEOUT:-15s}
+      HTTP_IDLE_TIMEOUT: ${HTTP_IDLE_TIMEOUT:-60s}
+      REQUEST_TIMEOUT: ${REQUEST_TIMEOUT:-5s}
+      SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-10s}
+    ports:
+      - "127.0.0.1:${ORDERS_PORT:-8081}:8081"
+    depends_on:
+      migrate-orders:
+        condition: service_completed_successfully
+      catalog:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    stop_grace_period: 20s
+    networks: [backend, edge]
+    restart: unless-stopped
+
+  redpanda:
+    image: ${REDPANDA_IMAGE:-docker.redpanda.com/redpandadata/redpanda:v26.2.5}
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=${REDPANDA_SMP:-1}
+      - --memory=${REDPANDA_MEMORY:-512M}
+      - --reserve-memory=0M
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://${KAFKA_EXTERNAL_HOST:-localhost}:${KAFKA_EXTERNAL_PORT:-19092}
+      - --rpc-addr=0.0.0.0:33145
+      - --advertise-rpc-addr=redpanda:33145
+      - --unsafe-bypass-fsync=false
+    ports:
+      - "127.0.0.1:${KAFKA_EXTERNAL_PORT:-19092}:19092"
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+      - ./redpanda.bootstrap.yaml:/etc/redpanda/.bootstrap.yaml:ro
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "info", "-X", "brokers=localhost:9092"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    stop_grace_period: 30s
+    restart: unless-stopped
+    networks: [backend, edge]
+
+  init-topics:
+    image: ${REDPANDA_IMAGE:-docker.redpanda.com/redpandadata/redpanda:v26.2.5}
+    entrypoint: ["/bin/sh", "/init-topics.sh"]
+    volumes:
+      - ./init-topics.sh:/init-topics.sh:ro
+    environment:
+      KAFKA_BROKERS: ${KAFKA_INTERNAL_BROKERS:-redpanda:9092}
+      ORDERS_EVENTS_TOPIC: ${ORDERS_EVENTS_TOPIC:-orders.events.v1}
+      DELIVERY_EVENTS_TOPIC: ${DELIVERY_EVENTS_TOPIC:-delivery.events.v1}
+      DELIVERY_COMMANDS_TOPIC: ${DELIVERY_COMMANDS_TOPIC:-delivery.commands.v1}
+      ORDERS_EVENTS_PARTITIONS: ${ORDERS_EVENTS_PARTITIONS:-3}
+      ORDERS_EVENTS_REPLICAS: ${ORDERS_EVENTS_REPLICAS:-1}
+      ORDERS_EVENTS_RETENTION_MS: ${ORDERS_EVENTS_RETENTION_MS:-604800000}
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    restart: "no"
+    networks: [backend]
+
+  outbox:
+    build:
+      context: ..
+      dockerfile: services/orders/Dockerfile
+    entrypoint: ["/usr/local/bin/outbox"]
+    environment:
+      DATABASE_URL: postgres://orders_service:${ORDERS_DB_PASSWORD:?set ORDERS_DB_PASSWORD in .env}@postgres:5432/orders?sslmode=disable
+      KAFKA_BROKERS: ${KAFKA_INTERNAL_BROKERS:-redpanda:9092}
+      ORDERS_EVENTS_TOPIC: ${ORDERS_EVENTS_TOPIC:-orders.events.v1}
+      DELIVERY_EVENTS_TOPIC: ${DELIVERY_EVENTS_TOPIC:-delivery.events.v1}
+      DELIVERY_COMMANDS_TOPIC: ${DELIVERY_COMMANDS_TOPIC:-delivery.commands.v1}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      OUTBOX_HTTP_ADDR: :8084
+      OUTBOX_POLL_INTERVAL: ${OUTBOX_POLL_INTERVAL:-500ms}
+      OUTBOX_LEASE: ${OUTBOX_LEASE:-30s}
+      KAFKA_PUBLISH_TIMEOUT: ${KAFKA_PUBLISH_TIMEOUT:-10s}
+      DB_OPERATION_TIMEOUT: ${DB_OPERATION_TIMEOUT:-5s}
+      OUTBOX_RETRY_BASE: ${OUTBOX_RETRY_BASE:-1s}
+      OUTBOX_RETRY_MAX: ${OUTBOX_RETRY_MAX:-5m}
+      OUTBOX_MAX_ATTEMPTS: ${OUTBOX_MAX_ATTEMPTS:-20}
+      OUTBOX_RETENTION: ${OUTBOX_RETENTION:-168h}
+      OUTBOX_CLEANUP_INTERVAL: ${OUTBOX_CLEANUP_INTERVAL:-1h}
+    depends_on:
+      migrate-orders:
+        condition: service_completed_successfully
+      init-topics:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8084/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    stop_grace_period: 20s
+    restart: unless-stopped
+    networks: [backend]
+
+  notifications-postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: notifications_admin
+      POSTGRES_PASSWORD: ${NOTIFICATIONS_POSTGRES_PASSWORD:?set NOTIFICATIONS_POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: postgres
+    ports:
+      - "127.0.0.1:${NOTIFICATIONS_DB_PORT:-5433}:5432"
+    volumes:
+      - notifications_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks: [backend, edge]
+
+  init-notifications-database:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_PASSWORD: ${NOTIFICATIONS_POSTGRES_PASSWORD:?set NOTIFICATIONS_POSTGRES_PASSWORD in .env}
+      NOTIFICATIONS_DB_PASSWORD: ${NOTIFICATIONS_DB_PASSWORD:?set NOTIFICATIONS_DB_PASSWORD in .env}
+    volumes:
+      - ./init-notifications-database.sh:/init-notifications-database.sh:ro
+    entrypoint: ["/bin/sh", "/init-notifications-database.sh"]
+    depends_on:
+      notifications-postgres:
+        condition: service_healthy
+    networks: [backend]
+    restart: "no"
+
+  migrate-notifications:
+    image: migrate/migrate:v4.18.3
+    volumes:
+      - ../services/notifications/migrations:/migrations:ro
+    command:
+      - -path=/migrations
+      - -database=postgres://notifications_service:${NOTIFICATIONS_DB_PASSWORD:?set NOTIFICATIONS_DB_PASSWORD in .env}@notifications-postgres:5432/notifications?sslmode=disable
+      - up
+    depends_on:
+      init-notifications-database:
+        condition: service_completed_successfully
+    restart: "no"
+    networks: [backend]
+
+  notifications:
+    build:
+      context: ..
+      dockerfile: services/notifications/Dockerfile
+    environment:
+      DATABASE_URL: postgres://notifications_service:${NOTIFICATIONS_DB_PASSWORD:?set NOTIFICATIONS_DB_PASSWORD in .env}@notifications-postgres:5432/notifications?sslmode=disable
+      HTTP_ADDR: :8083
+      KAFKA_BROKERS: ${KAFKA_INTERNAL_BROKERS:-redpanda:9092}
+      ORDERS_EVENTS_TOPIC: ${ORDERS_EVENTS_TOPIC:-orders.events.v1}
+      DELIVERY_EVENTS_TOPIC: ${DELIVERY_EVENTS_TOPIC:-delivery.events.v1}
+      DELIVERY_COMMANDS_TOPIC: ${DELIVERY_COMMANDS_TOPIC:-delivery.commands.v1}
+      KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP:-notifications-v1}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DB_OPERATION_TIMEOUT: ${DB_OPERATION_TIMEOUT:-5s}
+      CONSUMER_RETRY_BASE: ${CONSUMER_RETRY_BASE:-1s}
+      CONSUMER_RETRY_MAX: ${CONSUMER_RETRY_MAX:-10s}
+      CONSUMER_MAX_ATTEMPTS: ${CONSUMER_MAX_ATTEMPTS:-5}
+      SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-10s}
+    ports:
+      - "127.0.0.1:${NOTIFICATIONS_PORT:-8083}:8083"
+    depends_on:
+      migrate-notifications:
+        condition: service_completed_successfully
+      init-topics:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8083/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    stop_grace_period: 20s
+    restart: unless-stopped
+    networks: [backend, edge]
+
+  migrate-delivery:
+    image: migrate/migrate:v4.18.3
+    volumes:
+      - ../services/delivery/migrations:/migrations:ro
+    command:
+      - -path=/migrations
+      - -database=postgres://delivery_service:${DELIVERY_DB_PASSWORD:?set DELIVERY_DB_PASSWORD in .env}@postgres:5432/delivery?sslmode=disable
+      - up
+    depends_on:
+      init-databases:
+        condition: service_completed_successfully
+    networks: [backend]
+    restart: "no"
+
+  delivery:
+    build:
+      context: ..
+      dockerfile: services/delivery/Dockerfile
+    environment:
+      DATABASE_URL: postgres://delivery_service:${DELIVERY_DB_PASSWORD:?set DELIVERY_DB_PASSWORD in .env}@postgres:5432/delivery?sslmode=disable
+      HTTP_ADDR: :8085
+      APP_ENV: ${APP_ENV:-development}
+      DEV_AUTH_ENABLED: ${DEV_AUTH_ENABLED:-true}
+      DEV_DISPATCHER_IDS: ${DEV_DISPATCHER_IDS:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports: ["127.0.0.1:${DELIVERY_PORT:-8085}:8085"]
+    depends_on:
+      migrate-delivery:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8085/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    stop_grace_period: 20s
+    restart: unless-stopped
+    networks: [backend, edge]
+
+  delivery-outbox:
+    build:
+      context: ..
+      dockerfile: services/delivery/Dockerfile
+    entrypoint: ["/usr/local/bin/outbox"]
+    environment:
+      DATABASE_URL: postgres://delivery_service:${DELIVERY_DB_PASSWORD:?set DELIVERY_DB_PASSWORD in .env}@postgres:5432/delivery?sslmode=disable
+      KAFKA_BROKERS: ${KAFKA_INTERNAL_BROKERS:-redpanda:9092}
+      DELIVERY_EVENTS_TOPIC: ${DELIVERY_EVENTS_TOPIC:-delivery.events.v1}
+      DELIVERY_COMMANDS_TOPIC: ${DELIVERY_COMMANDS_TOPIC:-delivery.commands.v1}
+      OUTBOX_HTTP_ADDR: :8084
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      migrate-delivery:
+        condition: service_completed_successfully
+      init-topics:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8084/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    stop_grace_period: 20s
+    restart: unless-stopped
+    networks: [backend]
+
+  delivery-consumer:
+    build:
+      context: ..
+      dockerfile: services/delivery/Dockerfile
+    entrypoint: ["/usr/local/bin/consumer"]
+    environment:
+      DATABASE_URL: postgres://delivery_service:${DELIVERY_DB_PASSWORD:?set DELIVERY_DB_PASSWORD in .env}@postgres:5432/delivery?sslmode=disable
+      KAFKA_BROKERS: ${KAFKA_INTERNAL_BROKERS:-redpanda:9092}
+      ORDERS_EVENTS_TOPIC: ${ORDERS_EVENTS_TOPIC:-orders.events.v1}
+      FULFILLMENT_CONSUMER_GROUP: delivery-orders-v1
+      CONSUMER_HTTP_ADDR: :8086
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      migrate-delivery:
+        condition: service_completed_successfully
+      init-topics:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8086/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    stop_grace_period: 20s
+    restart: unless-stopped
+    networks: [backend]
+
+  orders-delivery-consumer:
+    build:
+      context: ..
+      dockerfile: services/orders/Dockerfile
+    entrypoint: ["/usr/local/bin/consumer"]
+    environment:
+      DATABASE_URL: postgres://orders_service:${ORDERS_DB_PASSWORD:?set ORDERS_DB_PASSWORD in .env}@postgres:5432/orders?sslmode=disable
+      KAFKA_BROKERS: ${KAFKA_INTERNAL_BROKERS:-redpanda:9092}
+      DELIVERY_EVENTS_TOPIC: ${DELIVERY_EVENTS_TOPIC:-delivery.events.v1}
+      DELIVERY_COMMANDS_TOPIC: ${DELIVERY_COMMANDS_TOPIC:-delivery.commands.v1}
+      FULFILLMENT_CONSUMER_GROUP: orders-delivery-v1
+      CONSUMER_HTTP_ADDR: :8087
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SAGA_CREATE_TIMEOUT: ${SAGA_CREATE_TIMEOUT:-5m}
+      SAGA_ASSIGNMENT_TIMEOUT: ${SAGA_ASSIGNMENT_TIMEOUT:-10m}
+      SAGA_PROGRESS_TIMEOUT: ${SAGA_PROGRESS_TIMEOUT:-30m}
+      SAGA_CANCEL_TIMEOUT: ${SAGA_CANCEL_TIMEOUT:-5m}
+      SAGA_RETRY_BASE: ${SAGA_RETRY_BASE:-1s}
+      SAGA_RETRY_MAX: ${SAGA_RETRY_MAX:-30s}
+      SAGA_MAX_ATTEMPTS: ${SAGA_MAX_ATTEMPTS:-20}
+      SAGA_POLL_INTERVAL: ${SAGA_POLL_INTERVAL:-1s}
+      SAGA_CANCEL_BEFORE_PREPARING: ${SAGA_CANCEL_BEFORE_PREPARING:-false}
+    depends_on:
+      migrate-orders:
+        condition: service_completed_successfully
+      init-topics:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8087/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    stop_grace_period: 20s
+    restart: unless-stopped
+    networks: [backend]
+
+  orders-saga:
+    build:
+      context: ..
+      dockerfile: services/orders/Dockerfile
+    entrypoint: ["/usr/local/bin/saga"]
+    environment:
+      DATABASE_URL: postgres://orders_service:${ORDERS_DB_PASSWORD:?set ORDERS_DB_PASSWORD in .env}@postgres:5432/orders?sslmode=disable
+      SAGA_HTTP_ADDR: :8089
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SAGA_CREATE_TIMEOUT: ${SAGA_CREATE_TIMEOUT:-5m}
+      SAGA_ASSIGNMENT_TIMEOUT: ${SAGA_ASSIGNMENT_TIMEOUT:-10m}
+      SAGA_PROGRESS_TIMEOUT: ${SAGA_PROGRESS_TIMEOUT:-30m}
+      SAGA_CANCEL_TIMEOUT: ${SAGA_CANCEL_TIMEOUT:-5m}
+      SAGA_RETRY_BASE: ${SAGA_RETRY_BASE:-1s}
+      SAGA_RETRY_MAX: ${SAGA_RETRY_MAX:-30s}
+      SAGA_MAX_ATTEMPTS: ${SAGA_MAX_ATTEMPTS:-20}
+      SAGA_POLL_INTERVAL: ${SAGA_POLL_INTERVAL:-1s}
+      SAGA_CANCEL_BEFORE_PREPARING: ${SAGA_CANCEL_BEFORE_PREPARING:-false}
+    depends_on:
+      migrate-orders:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8089/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    stop_grace_period: 20s
+    restart: unless-stopped
+    networks: [backend]
+
+networks:
+  backend:
+    internal: true
+  edge:
+
+volumes:
+  catalog_data:
+  notifications_data:
+  redpanda_data:

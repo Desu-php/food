@@ -1,0 +1,9 @@
+go 1.27.2
+
+use (
+	./contracts
+	./services/delivery
+	./services/catalog
+	./services/notifications
+	./services/orders
+)

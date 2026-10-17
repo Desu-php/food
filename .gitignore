@@ -1,0 +1,41 @@
+# IDE and editor settings
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+
+# Local environment and secrets (keep examples in Git)
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Go binaries, test results and profiling output
+bin/
+/dist/
+/build/
+/api
+*.exe
+*.test
+*.prof
+*.pprof
+coverage.out
+coverage.html
+coverage-*.out
+/coverage/
+
+# Local logs, caches and temporary files
+*.log
+.cache/
+/tmp/
+/temp/
+__pycache__/
+*.pyc
+
+# Operating system files
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
