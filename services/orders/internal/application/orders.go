@@ -11,6 +11,7 @@ import (
 	"sort"
 	"time"
 
+	"example.com/food/contracts/geo"
 	"example.com/food/orders/internal/domain"
 )
 
@@ -43,8 +44,9 @@ type CreateCommand struct {
 }
 
 type CatalogQuote struct {
-	Items         []domain.PricedItem
-	PickupAddress string
+	RestaurantLocation *geo.Point
+	Items              []domain.PricedItem
+	PickupAddress      string
 }
 
 type CatalogClient interface {
@@ -144,6 +146,10 @@ func (s *Orders) CreateOrder(ctx context.Context, c CreateCommand, key string) (
 			}
 		}
 	}
+	var locationSnapshot *geo.Point
+	if c.FulfillmentType == domain.Delivery {
+		locationSnapshot = quote.RestaurantLocation
+	}
 	var order domain.Order
 	location := ""
 	if err == nil && c.FulfillmentType == domain.Pickup {
@@ -153,7 +159,7 @@ func (s *Orders) CreateOrder(ctx context.Context, c CreateCommand, key string) (
 		}
 	}
 	if err == nil {
-		order, err = domain.NewOrder(c.CustomerID, c.RestaurantID, c.Currency, quoted, time.Now(), domain.Fulfillment{Type: c.FulfillmentType, DeliveryAddress: c.DeliveryAddress, PickupAddress: location})
+		order, err = domain.NewOrder(c.CustomerID, c.RestaurantID, c.Currency, quoted, time.Now(), domain.Fulfillment{RestaurantLocation: locationSnapshot, Type: c.FulfillmentType, DeliveryAddress: c.DeliveryAddress, PickupAddress: location})
 	}
 	if err == nil && order.Snapshot().SubtotalMinor != c.ExpectedSubtotalMinor {
 		err = ErrPriceChanged

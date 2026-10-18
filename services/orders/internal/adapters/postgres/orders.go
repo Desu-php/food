@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"example.com/food/contracts/geo"
 	events "example.com/food/contracts/orders/v1"
 	"example.com/food/orders/internal/application"
 	"example.com/food/orders/internal/domain"
@@ -67,8 +68,13 @@ func (r *Orders) Create(ctx context.Context, key, hash string, order domain.Orde
 	}
 	defer rollback(tx)
 	state := order.Snapshot()
-	err = tx.QueryRow(ctx, `INSERT INTO orders(customer_id,restaurant_id,status,currency,subtotal_minor,created_at,updated_at,fulfillment_type,delivery_address,pickup_address,payment_method)
- VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id,created_at,updated_at`, state.CustomerID, state.RestaurantID, state.Status, state.Currency, state.SubtotalMinor, state.CreatedAt, state.UpdatedAt, state.FulfillmentType, state.DeliveryAddress, state.PickupAddress, state.PaymentMethod).Scan(&state.ID, &state.CreatedAt, &state.UpdatedAt)
+	var latitude, longitude *float64
+	if state.RestaurantLocation != nil {
+		latitude = &state.RestaurantLocation.Latitude
+		longitude = &state.RestaurantLocation.Longitude
+	}
+	err = tx.QueryRow(ctx, `INSERT INTO orders(customer_id,restaurant_id,status,currency,subtotal_minor,created_at,updated_at,fulfillment_type,delivery_address,pickup_address,payment_method,latitude,longitude)
+ VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id,created_at,updated_at`, state.CustomerID, state.RestaurantID, state.Status, state.Currency, state.SubtotalMinor, state.CreatedAt, state.UpdatedAt, state.FulfillmentType, state.DeliveryAddress, state.PickupAddress, state.PaymentMethod, latitude, longitude).Scan(&state.ID, &state.CreatedAt, &state.UpdatedAt)
 	if err != nil {
 		return domain.Order{}, fmt.Errorf("insert order: %w", err)
 	}
@@ -128,7 +134,7 @@ type querier interface {
 }
 
 func load(ctx context.Context, q querier, customerID, id int64, lock bool) (domain.Order, error) {
-	query := `SELECT o.id,o.version,o.customer_id,o.restaurant_id,o.status,o.courier_id,o.cancellation_requested,o.payment_method,o.payment_status,o.currency,o.subtotal_minor,o.created_at,o.updated_at,o.fulfillment_type,o.delivery_address,o.pickup_address,o.legacy_delivery_address,o.delivery_fee_minor,
+	query := `SELECT o.id,o.version,o.customer_id,o.restaurant_id,o.status,o.courier_id,o.cancellation_requested,o.payment_method,o.payment_status,o.currency,o.subtotal_minor,o.created_at,o.updated_at,o.fulfillment_type,o.delivery_address,o.pickup_address,o.legacy_delivery_address,o.delivery_fee_minor,o.latitude,o.longitude,
  i.id,i.order_id,i.menu_item_id,i.name,i.quantity,i.unit_price_minor,i.total_price_minor
  FROM orders o JOIN order_items i ON i.order_id=o.id WHERE o.customer_id=$1 AND o.id=$2 ORDER BY i.id`
 	if lock {
@@ -166,9 +172,13 @@ func readOrders(rows pgx.Rows) ([]domain.Order, error) {
 	}
 	for rows.Next() {
 		var next domain.State
+		var latitude, longitude *float64
 		var p domain.OrderItem
-		if err := rows.Scan(&next.ID, &next.Version, &next.CustomerID, &next.RestaurantID, &next.Status, &next.CourierID, &next.CancellationRequested, &next.PaymentMethod, &next.PaymentStatus, &next.Currency, &next.SubtotalMinor, &next.CreatedAt, &next.UpdatedAt, &next.FulfillmentType, &next.DeliveryAddress, &next.PickupAddress, &next.LegacyDeliveryAddress, &next.DeliveryFeeMinor, &p.ID, &p.OrderID, &p.MenuItemID, &p.Name, &p.Quantity, &p.UnitPriceMinor, &p.TotalPriceMinor); err != nil {
+		if err := rows.Scan(&next.ID, &next.Version, &next.CustomerID, &next.RestaurantID, &next.Status, &next.CourierID, &next.CancellationRequested, &next.PaymentMethod, &next.PaymentStatus, &next.Currency, &next.SubtotalMinor, &next.CreatedAt, &next.UpdatedAt, &next.FulfillmentType, &next.DeliveryAddress, &next.PickupAddress, &next.LegacyDeliveryAddress, &next.DeliveryFeeMinor, &latitude, &longitude, &p.ID, &p.OrderID, &p.MenuItemID, &p.Name, &p.Quantity, &p.UnitPriceMinor, &p.TotalPriceMinor); err != nil {
 			return nil, fmt.Errorf("scan order: %w", err)
+		}
+		if latitude != nil && longitude != nil {
+			next.RestaurantLocation = &geo.Point{Latitude: *latitude, Longitude: *longitude}
 		}
 		if next.ID != state.ID {
 			if err := appendOrder(); err != nil {

@@ -62,7 +62,7 @@ func integrationPool(t *testing.T, migrations ...string) *pgxpool.Pool {
 	}
 	t.Cleanup(pool.Close)
 	if len(migrations) == 0 {
-		migrations = []string{"000001_orders", "000002_outbox", "000003_fulfillment", "000004_saga", "000005_pickup", "000006_consumer_quarantine"}
+		migrations = []string{"000001_orders", "000002_outbox", "000003_fulfillment", "000004_saga", "000005_pickup", "000006_consumer_quarantine", "000007_dispatch_snapshot"}
 	}
 	for _, migration := range migrations {
 		sql, err := os.ReadFile("../../../migrations/" + migration + ".up.sql")
@@ -399,6 +399,7 @@ func TestOrdersMigrationRoundTrip(t *testing.T) {
 	if _, err := pool.Exec(ctx, string(pickupSQL)); err != nil {
 		t.Fatal(err)
 	}
+	applyDispatchMigration(t, pool)
 	if _, err := NewOrders(pool).Create(ctx, "after-up", strings.Repeat("a", 64), newOrder(t)); err != nil {
 		t.Fatal(err)
 	}

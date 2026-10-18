@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"example.com/food/contracts/correlation"
+	"example.com/food/contracts/geo"
 	orders "example.com/food/contracts/orders/v1"
 )
 
@@ -24,12 +25,14 @@ var ErrUnsupported = errors.New("unsupported delivery contract")
 var ErrInvalid = errors.New("invalid delivery command")
 
 type Payload struct {
-	FulfillmentType      string `json:"fulfillment_type,omitempty"`
-	DeliveryAddress      string `json:"delivery_address,omitempty"`
-	OrderID              int64  `json:"order_id"`
-	OrderVersion         int64  `json:"order_version"`
-	AmountToCollectMinor int64  `json:"amount_to_collect_minor"`
-	Currency             string `json:"currency"`
+	RestaurantLocation   *geo.Point `json:"restaurant_location,omitempty"`
+	DispatchDeadline     *time.Time `json:"dispatch_deadline,omitempty"`
+	FulfillmentType      string     `json:"fulfillment_type,omitempty"`
+	DeliveryAddress      string     `json:"delivery_address,omitempty"`
+	OrderID              int64      `json:"order_id"`
+	OrderVersion         int64      `json:"order_version"`
+	AmountToCollectMinor int64      `json:"amount_to_collect_minor"`
+	Currency             string     `json:"currency"`
 }
 type Command struct {
 	MessageID        string    `json:"message_id"`
@@ -43,6 +46,9 @@ type Command struct {
 }
 
 func (c Command) Validate() error {
+	if c.Payload.RestaurantLocation != nil && !c.Payload.RestaurantLocation.Valid() || c.Payload.DispatchDeadline != nil && c.Payload.DispatchDeadline.IsZero() {
+		return ErrInvalid
+	}
 	if c.Payload.FulfillmentType != "" && c.Payload.FulfillmentType != "DELIVERY" || c.Payload.FulfillmentType == "DELIVERY" && c.Payload.DeliveryAddress == "" {
 		return ErrInvalid
 	}

@@ -1,4 +1,15 @@
 services:
+  redis:
+    image: redis:8.2-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    networks: [backend]
+
   postgres:
     image: postgres:18-alpine
     environment:
@@ -355,6 +366,17 @@ services:
       OIDC_JWKS_URL: ${OIDC_JWKS_URL:-}
       OIDC_AUDIENCE: ${DELIVERY_OIDC_AUDIENCE:-}
       AUTH_IDENTITIES_FILE: ${AUTH_IDENTITIES_FILE:-}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      DISPATCH_ENABLED: ${DISPATCH_ENABLED:-true}
+      DISPATCH_RADIUS_METERS: ${DISPATCH_RADIUS_METERS:-5000}
+      DISPATCH_POLL_INTERVAL: ${DISPATCH_POLL_INTERVAL:-1s}
+      DISPATCH_LEASE: ${DISPATCH_LEASE:-15s}
+      DISPATCH_RETRY_INTERVAL: ${DISPATCH_RETRY_INTERVAL:-5s}
+      DISPATCH_MAX_ATTEMPTS: ${DISPATCH_MAX_ATTEMPTS:-60}
+      DISPATCH_COOLDOWN: ${DISPATCH_COOLDOWN:-2m}
+      DISPATCH_OPERATION_TIMEOUT: ${DISPATCH_OPERATION_TIMEOUT:-3s}
+      LOCATION_TTL: ${LOCATION_TTL:-60s}
+      LOCATION_MIN_INTERVAL: ${LOCATION_MIN_INTERVAL:-5s}
       HTTP_ADDR: :8085
       APP_ENV: ${APP_ENV:-development}
       DEV_AUTH_ENABLED: ${DEV_AUTH_ENABLED:-true}

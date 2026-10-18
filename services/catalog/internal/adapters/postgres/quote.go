@@ -13,7 +13,7 @@ var _ application.QuoteRepository = (*Menu)(nil)
 func (r *Menu) LoadQuote(ctx context.Context, restaurantID int64, ids []int64) (domain.Restaurant, []domain.MenuItem, error) {
 	// One statement: restaurant availability and all requested items share a snapshot.
 	// Join on item ID alone so the application can distinguish wrong ownership.
-	rows, err := r.pool.Query(ctx, `SELECT r.id,r.is_open,r.address,i.id,i.restaurant_id,i.name,i.price_minor,i.currency,i.is_available
+	rows, err := r.pool.Query(ctx, `SELECT r.id,r.is_open,r.address,r.latitude,r.longitude,i.id,i.restaurant_id,i.name,i.price_minor,i.currency,i.is_available
  FROM restaurants r CROSS JOIN unnest($2::bigint[]) WITH ORDINALITY requested(id,position)
  LEFT JOIN menu_items i ON i.id=requested.id AND i.deleted_at IS NULL
  WHERE r.id=$1 ORDER BY requested.position`, restaurantID, ids)
@@ -28,7 +28,7 @@ func (r *Menu) LoadQuote(ctx context.Context, restaurantID int64, ids []int64) (
 		var id, owner, price *int64
 		var name, currency *string
 		var available *bool
-		if err := rows.Scan(&restaurant.ID, &restaurant.IsOpen, &restaurant.Address, &id, &owner, &name, &price, &currency, &available); err != nil {
+		if err := rows.Scan(&restaurant.ID, &restaurant.IsOpen, &restaurant.Address, &restaurant.Latitude, &restaurant.Longitude, &id, &owner, &name, &price, &currency, &available); err != nil {
 			return domain.Restaurant{}, nil, fmt.Errorf("scan quote: %w", err)
 		}
 		if id == nil {

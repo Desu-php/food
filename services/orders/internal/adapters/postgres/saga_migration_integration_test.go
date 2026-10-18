@@ -34,6 +34,7 @@ func TestSagaMigrationReconcilesLegacyPickedUpOrder(t *testing.T) {
 	if _, err := pool.Exec(ctx, string(pickupSQL)); err != nil {
 		t.Fatal(err)
 	}
+	applyDispatchMigration(t, pool)
 	r := NewOrders(pool)
 	s, err := r.Saga(ctx, 1, 1)
 	if err != nil || s.State != domain.SagaCreatingDelivery || s.Reason != "legacy_reconciliation" || s.DeliveryVersion != 2 {
@@ -82,6 +83,7 @@ func TestEmptySagaMigrationRoundTrip(t *testing.T) {
 	if _, err := pool.Exec(ctx, string(pickupSQL)); err != nil {
 		t.Fatal(err)
 	}
+	applyDispatchMigration(t, pool)
 	if _, err := NewOrders(pool).Create(ctx, "roundtrip", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", newOrder(t)); err != nil {
 		t.Fatal(err)
 	}

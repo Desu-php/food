@@ -9,14 +9,16 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 
 	httpadapter "example.com/food/delivery/internal/adapters/http"
 	"example.com/food/delivery/internal/adapters/postgres"
+	redisadapter "example.com/food/delivery/internal/adapters/redis"
 	"example.com/food/delivery/internal/application"
 	"example.com/food/platform/security"
 )
 
-const schemaCheck = "SELECT d.id,d.order_id,d.version,d.order_version,d.ready,c.id,c.updated_at,d.preparation_started,p.delivery_id,p.id,e.event_id,i.event_id FROM deliveries d LEFT JOIN couriers c ON c.id=d.courier_id LEFT JOIN payment_confirmations p ON p.delivery_id=d.id LEFT JOIN outbox_events e ON e.aggregate_id=d.id LEFT JOIN processed_events i ON false LIMIT 0"
+const schemaCheck = "SELECT d.latitude,d.longitude,d.dispatch_deadline,d.dispatch_attempts,d.id,d.order_id,d.version,d.order_version,d.ready,c.id,c.updated_at,d.preparation_started,p.delivery_id,p.id,e.event_id,i.event_id FROM deliveries d LEFT JOIN couriers c ON c.id=d.courier_id LEFT JOIN payment_confirmations p ON p.delivery_id=d.id LEFT JOIN outbox_events e ON e.aggregate_id=d.id LEFT JOIN processed_events i ON false LIMIT 0"
 
 func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 	cfg.DevAuthEnabled = cfg.Authentication.DevEnabled
@@ -52,7 +54,30 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 	if !cfg.DevAuthEnabled {
 		cfg.DispatcherIDs = auth.Dispatchers()
 	}
-	service := application.NewDelivery(postgres.NewRepository(pool), cfg.DispatcherIDs)
+	repo := postgres.NewRepository(pool)
+	redisOptions, err := redis.ParseURL(cfg.RedisURL)
+	if err != nil {
+		return errors.New("invalid REDIS_URL")
+	}
+	redisOptions.DialTimeout = time.Second
+	redisOptions.ReadTimeout = time.Second
+	redisOptions.WriteTimeout = time.Second
+	redisOptions.ContextTimeoutEnabled = true
+	redisOptions.MaxRetries = -1
+	locationsClient := redis.NewClient(redisOptions)
+	defer locationsClient.Close()
+	locations := redisadapter.NewLocations(locationsClient, "{delivery-dispatch}", cfg.LocationTTL, cfg.LocationInterval)
+	dispatch := application.NewDispatch(repo, locations, cfg.Dispatch)
+	service := application.NewDelivery(repo, cfg.DispatcherIDs).WithDispatch(dispatch)
+	workerCtx, stopWorker := context.WithCancel(ctx)
+	workerDone := make(chan struct{})
+	if cfg.DispatchEnabled {
+		go func() { defer close(workerDone); dispatch.Run(workerCtx, logger) }()
+	} else {
+		close(workerDone)
+	}
+	defer func() { stopWorker(); <-workerDone }()
+
 	ready := func(ctx context.Context) error { _, err := pool.Exec(ctx, schemaCheck); return err }
 	if cfg.DevAuthEnabled {
 		logger.Warn("development identity enabled; do not expose this API to untrusted clients")

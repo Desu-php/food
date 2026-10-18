@@ -35,6 +35,8 @@ func NewHandler(service *application.Delivery, ready func(context.Context) error
 		}
 		writeJSON(w, 200, map[string]string{"status": "ok"})
 	})
+	mux.HandleFunc("POST /couriers/me/location", h.location)
+	mux.HandleFunc("POST /deliveries/{id}/dispatch/retry", h.retryDispatch)
 	mux.HandleFunc("POST /couriers", h.createCourier)
 	mux.HandleFunc("POST /couriers/{id}/status", h.setAvailability)
 	mux.HandleFunc("POST /deliveries/{id}/decline", h.decline)
@@ -44,7 +46,7 @@ func NewHandler(service *application.Delivery, ready func(context.Context) error
 	mux.HandleFunc("POST /deliveries/{id}/assign", h.assign)
 	mux.HandleFunc("POST /deliveries/{id}/pickup", h.pickup)
 	mux.HandleFunc("POST /deliveries/{id}/complete", h.complete)
-	for _, route := range []struct{ pattern, allow string }{{"/health", "GET, HEAD"}, {"/ready", "GET, HEAD"}, {"/couriers", "GET, HEAD, POST"}, {"/couriers/{id}/status", "POST"}, {"/deliveries", "GET, HEAD"}, {"/deliveries/{id}", "GET, HEAD"}, {"/deliveries/{id}/assign", "POST"}, {"/deliveries/{id}/decline", "POST"}, {"/deliveries/{id}/pickup", "POST"}, {"/deliveries/{id}/complete", "POST"}} {
+	for _, route := range []struct{ pattern, allow string }{{"/couriers/me/location", "POST"}, {"/deliveries/{id}/dispatch/retry", "POST"}, {"/health", "GET, HEAD"}, {"/ready", "GET, HEAD"}, {"/couriers", "GET, HEAD, POST"}, {"/couriers/{id}/status", "POST"}, {"/deliveries", "GET, HEAD"}, {"/deliveries/{id}", "GET, HEAD"}, {"/deliveries/{id}/assign", "POST"}, {"/deliveries/{id}/decline", "POST"}, {"/deliveries/{id}/pickup", "POST"}, {"/deliveries/{id}/complete", "POST"}} {
 		mux.HandleFunc(route.pattern, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Allow", route.allow)
 			writeJSON(w, 405, map[string]string{"error": "method not allowed"})
@@ -86,7 +88,7 @@ func (h *handler) fail(w http.ResponseWriter, err error) {
 	for _, v := range []struct {
 		err    error
 		status int
-	}{{domain.ErrInvalid, 400}, {domain.ErrForbidden, 403}, {domain.ErrNotFound, 404}, {domain.ErrConflict, 409}, {domain.ErrTransition, 409}, {domain.ErrPayment, 400}, {domain.ErrCancellationUnsafe, 409}} {
+	}{{application.ErrLocationRate, 429}, {application.ErrLocationUnavailable, 503}, {domain.ErrInvalid, 400}, {domain.ErrForbidden, 403}, {domain.ErrNotFound, 404}, {domain.ErrConflict, 409}, {domain.ErrTransition, 409}, {domain.ErrPayment, 400}, {domain.ErrCancellationUnsafe, 409}} {
 		if errors.Is(err, v.err) {
 			status = v.status
 			message = v.err.Error()

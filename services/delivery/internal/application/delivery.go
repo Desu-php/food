@@ -19,12 +19,13 @@ type Repository interface {
 	Change(context.Context, int64, string, func(*domain.Delivery) error) (domain.Delivery, error)
 }
 type Delivery struct {
+	automatic   *Dispatch
 	repo        Repository
 	dispatchers []int64
 }
 
 func NewDelivery(repo Repository, dispatchers []int64) *Delivery {
-	return &Delivery{repo, slices.Clone(dispatchers)}
+	return &Delivery{repo: repo, dispatchers: slices.Clone(dispatchers)}
 }
 func (s *Delivery) dispatch(user int64) error {
 	if user <= 0 || !slices.Contains(s.dispatchers, user) {

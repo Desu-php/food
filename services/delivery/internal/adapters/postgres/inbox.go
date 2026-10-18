@@ -65,6 +65,12 @@ func (r *Repository) ProcessOrder(ctx context.Context, e events.Event) error {
 	if err = tx.QueryRow(ctx, `SELECT preparation_started,ready FROM order_streams WHERE order_id=$1`, p.OrderID).Scan(&preparation, &ready); err != nil {
 		return err
 	}
+	if e.EventType == events.OrderCancellationRequested || e.EventType == events.OrderCancelled || e.EventType == events.OrderRejected || e.EventType == events.OrderResumed {
+		blocked := e.EventType != events.OrderResumed
+		if _, err = tx.Exec(ctx, `UPDATE order_streams SET dispatch_blocked=$2 WHERE order_id=$1`, p.OrderID, blocked); err != nil {
+			return err
+		}
+	}
 	if e.EventType == events.OrderPreparing {
 		preparation = true
 	}

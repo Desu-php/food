@@ -49,6 +49,8 @@ func (w *responseWriter) Write(body []byte) (int, error) {
 func (w *responseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 type restaurantDTO struct {
+	Latitude  *float64  `json:"latitude,omitempty"`
+	Longitude *float64  `json:"longitude,omitempty"`
 	ID        int64     `json:"id"`
 	Name      string    `json:"name"`
 	Address   string    `json:"address,omitempty"`
@@ -58,18 +60,30 @@ type restaurantDTO struct {
 }
 
 func toDTO(r domain.Restaurant) restaurantDTO {
-	return restaurantDTO{r.ID, r.Name, r.Address, r.IsOpen, r.CreatedAt.UTC(), r.UpdatedAt.UTC()}
+	return restaurantDTO{r.Latitude, r.Longitude, r.ID, r.Name, r.Address, r.IsOpen, r.CreatedAt.UTC(), r.UpdatedAt.UTC()}
 }
 
 // RawMessage distinguishes omitted fields from explicit null and false values.
 type mutationDTO struct {
-	Name    json.RawMessage `json:"name"`
-	Address json.RawMessage `json:"address"`
-	IsOpen  json.RawMessage `json:"is_open"`
+	Latitude  json.RawMessage `json:"latitude"`
+	Longitude json.RawMessage `json:"longitude"`
+	Name      json.RawMessage `json:"name"`
+	Address   json.RawMessage `json:"address"`
+	IsOpen    json.RawMessage `json:"is_open"`
 }
 
 func (d mutationDTO) changes() (domain.RestaurantChanges, error) {
 	var c domain.RestaurantChanges
+	for _, field := range []struct {
+		raw    json.RawMessage
+		target **float64
+	}{{d.Latitude, &c.Latitude}, {d.Longitude, &c.Longitude}} {
+		if len(field.raw) > 0 {
+			if err := json.Unmarshal(field.raw, field.target); err != nil || *field.target == nil {
+				return c, domain.ErrCoordinates
+			}
+		}
+	}
 	if len(d.Address) > 0 {
 		var v *string
 		if err := json.Unmarshal(d.Address, &v); err != nil || v == nil {
@@ -266,6 +280,10 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if input.Latitude != nil || input.Longitude != nil {
+		h.writeError(w, 400, "set coordinates through PATCH /restaurants/{id}")
+		return
+	}
 	var name string
 	var isOpen bool
 	if input.Name != nil {
@@ -314,7 +332,7 @@ func (h *handler) update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) handleError(w http.ResponseWriter, err error) {
-	for _, validation := range []error{domain.ErrInvalidMenuID, domain.ErrCategoryRestaurantMismatch, domain.ErrInvalidPrice, domain.ErrInvalidCurrency, domain.ErrInvalidSortOrder, domain.ErrInvalidDescription, domain.ErrEmptyMenuUpdate} {
+	for _, validation := range []error{domain.ErrCoordinates, domain.ErrInvalidMenuID, domain.ErrCategoryRestaurantMismatch, domain.ErrInvalidPrice, domain.ErrInvalidCurrency, domain.ErrInvalidSortOrder, domain.ErrInvalidDescription, domain.ErrEmptyMenuUpdate} {
 		if errors.Is(err, validation) {
 			h.writeError(w, http.StatusBadRequest, validation.Error())
 			return

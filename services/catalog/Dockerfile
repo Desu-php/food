@@ -2,6 +2,7 @@ FROM golang:1.27.2-alpine AS build
 WORKDIR /src/services/catalog
 ENV GOWORK=off
 COPY platform /src/platform
+COPY contracts /src/contracts
 COPY services/catalog/go.mod services/catalog/go.sum ./
 RUN go mod download
 COPY services/catalog .

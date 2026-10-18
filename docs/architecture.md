@@ -194,3 +194,16 @@ Service-wide fence охватывает разные partitions и commands/even
 Inbox/Outbox продолжают атомарно фиксировать бизнес-эффекты; публичные event JSON
 и fingerprints совместимы. Operational replay проходит через прежние domain gates.
 Настройка и восстановление — [runbook](security-reliability.md).
+
+
+## Automatic Courier Dispatch
+
+[ADR 0007](adr/0007-automatic-dispatch-and-redis-geo.md) добавляет Redis GEO только
+как временный индекс кандидатов Delivery. Application определяет Locations и
+DispatchRepository; Redis/PostgreSQL adapters реализуют эти порты, bootstrap
+запускает worker внутри Delivery API. Общий чистый contracts/geo value object
+не выполняет I/O. Domain.Assign и прежний transactional Outbox остаются основой
+назначения; PostgreSQL владеет доступностью, lease, cooldown и конкурентными
+инвариантами. Между claim и назначением Redis вызывается без SQL-транзакции.
+Orders сохраняет Catalog snapshot и deadline, продолжая прежнюю fulfillment Saga.
+[API, эксплуатация и ограничения](automatic-dispatch.md).

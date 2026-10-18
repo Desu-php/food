@@ -12,7 +12,7 @@ import (
 
 func (r *Orders) ListIncoming(ctx context.Context, restaurant, after int64, limit int) ([]domain.Order, error) {
 	// Page aggregates before joining items; one statement gives a consistent snapshot.
-	rows, err := r.pool.Query(ctx, `SELECT o.id,o.version,o.customer_id,o.restaurant_id,o.status,o.courier_id,o.cancellation_requested,o.payment_method,o.payment_status,o.currency,o.subtotal_minor,o.created_at,o.updated_at,o.fulfillment_type,o.delivery_address,o.pickup_address,o.legacy_delivery_address,o.delivery_fee_minor,
+	rows, err := r.pool.Query(ctx, `SELECT o.id,o.version,o.customer_id,o.restaurant_id,o.status,o.courier_id,o.cancellation_requested,o.payment_method,o.payment_status,o.currency,o.subtotal_minor,o.created_at,o.updated_at,o.fulfillment_type,o.delivery_address,o.pickup_address,o.legacy_delivery_address,o.delivery_fee_minor,o.latitude,o.longitude,
  i.id,i.order_id,i.menu_item_id,i.name,i.quantity,i.unit_price_minor,i.total_price_minor
  FROM (SELECT * FROM orders WHERE restaurant_id=$1 AND id>$2 AND status NOT IN ('DELIVERED','PICKED_UP_BY_CUSTOMER','CANCELLED') ORDER BY id LIMIT $3) o
  JOIN order_items i ON i.order_id=o.id ORDER BY o.id,i.id`, restaurant, after, limit)

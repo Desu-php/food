@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"example.com/food/catalog/internal/domain"
+	"example.com/food/contracts/geo"
 )
 
 var (
@@ -24,8 +25,9 @@ type QuoteRepository interface {
 }
 
 type QuoteResult struct {
-	Items         []domain.MenuItem
-	PickupAddress string
+	RestaurantLocation *geo.Point
+	Items              []domain.MenuItem
+	PickupAddress      string
 }
 
 type Quotes struct{ repo QuoteRepository }
@@ -62,5 +64,9 @@ func (s *Quotes) Quote(ctx context.Context, restaurantID int64, items []QuoteIte
 			return QuoteResult{}, ErrItemUnavailable
 		}
 	}
-	return QuoteResult{Items: menu, PickupAddress: restaurant.Address}, nil
+	var location *geo.Point
+	if restaurant.Latitude != nil && restaurant.Longitude != nil {
+		location = &geo.Point{Latitude: *restaurant.Latitude, Longitude: *restaurant.Longitude}
+	}
+	return QuoteResult{Items: menu, PickupAddress: restaurant.Address, RestaurantLocation: location}, nil
 }

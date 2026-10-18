@@ -30,6 +30,9 @@ func TestPickupEventsHaveNoDeliveryEffects(t *testing.T) {
 			t.Fatal(table, n, err)
 		}
 	}
+	if _, found, err := r.ClaimDispatch(ctx, application.DefaultDispatchConfig()); err != nil || found {
+		t.Fatal("pickup reached dispatch", found, err)
+	}
 	var version int64
 	var preparing, ready bool
 	if err := pool.QueryRow(ctx, `SELECT version,preparation_started,ready FROM order_streams WHERE order_id=42`).Scan(&version, &preparing, &ready); err != nil || version != 5 || preparing || ready {

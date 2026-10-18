@@ -26,6 +26,11 @@ type confirmationDTO struct {
 	ConfirmedAt      time.Time `json:"confirmed_at"`
 }
 type deliveryDTO struct {
+	DispatchPaused       bool             `json:"dispatch_paused"`
+	DispatchAttempts     int              `json:"dispatch_attempts"`
+	DispatchReason       string           `json:"dispatch_reason,omitempty"`
+	DispatchNextAt       time.Time        `json:"dispatch_next_at"`
+	DispatchDeadline     *time.Time       `json:"dispatch_deadline,omitempty"`
 	DeliveryAddress      string           `json:"delivery_address,omitempty"`
 	ID                   int64            `json:"id"`
 	OrderID              int64            `json:"order_id"`
@@ -44,7 +49,7 @@ func toCourier(c domain.Courier) courierDTO {
 	return courierDTO{c.ID, c.Name, c.Status, c.CreatedAt, c.UpdatedAt}
 }
 func toDelivery(d domain.Delivery) deliveryDTO {
-	result := deliveryDTO{DeliveryAddress: d.DeliveryAddress, ID: d.ID, OrderID: d.OrderID, CourierID: d.CourierID, Status: d.Status, AmountToCollectMinor: d.AmountToCollectMinor, Currency: d.Currency, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt, Version: d.Version, Ready: d.Ready}
+	result := deliveryDTO{DispatchPaused: d.DispatchPaused, DispatchAttempts: d.DispatchAttempts, DispatchReason: d.DispatchReason, DispatchNextAt: d.DispatchNextAt, DispatchDeadline: d.DispatchDeadline, DeliveryAddress: d.DeliveryAddress, ID: d.ID, OrderID: d.OrderID, CourierID: d.CourierID, Status: d.Status, AmountToCollectMinor: d.AmountToCollectMinor, Currency: d.Currency, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt, Version: d.Version, Ready: d.Ready}
 	if p := d.Confirmation; p != nil {
 		result.Confirmation = &confirmationDTO{p.ID, p.OrderID, p.DeliveryID, p.AmountMinor, p.Currency, p.PaymentMethod, p.ReceiptReference, p.ReceiptReference, p.ConfirmedBy, p.ConfirmedAt}
 	}

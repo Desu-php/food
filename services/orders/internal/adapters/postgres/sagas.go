@@ -15,7 +15,7 @@ import (
 	"example.com/food/orders/internal/domain"
 )
 
-const sagaColumns = `order_id,state,version,delivery_id,delivery_version,courier_id,command_id,command_type,command_sequence,attempts,deadline,next_attempt_at,reason,correlation_id,created_at,updated_at,cancel_reason,legacy_reconciliation`
+const sagaColumns = `order_id,state,version,delivery_id,delivery_version,courier_id,command_id,command_type,command_sequence,attempts,deadline,next_attempt_at,reason,correlation_id,created_at,updated_at,cancel_reason,legacy_reconciliation,dispatch_deadline`
 
 func loadOrderSaga(ctx context.Context, tx pgx.Tx, o domain.Order) (domain.Saga, error) {
 	if o.Snapshot().FulfillmentType == domain.Pickup {
@@ -26,7 +26,7 @@ func loadOrderSaga(ctx context.Context, tx pgx.Tx, o domain.Order) (domain.Saga,
 
 func loadSaga(ctx context.Context, tx pgx.Tx, id int64) (domain.Saga, error) {
 	var s domain.Saga
-	err := tx.QueryRow(ctx, `SELECT `+sagaColumns+` FROM order_sagas WHERE order_id=$1 FOR UPDATE`, id).Scan(&s.OrderID, &s.State, &s.Version, &s.DeliveryID, &s.DeliveryVersion, &s.CourierID, &s.CommandID, &s.CommandType, &s.CommandSequence, &s.Attempts, &s.Deadline, &s.NextAttempt, &s.Reason, &s.CorrelationID, &s.CreatedAt, &s.UpdatedAt, &s.CancelReason, &s.LegacyReconciliation)
+	err := tx.QueryRow(ctx, `SELECT `+sagaColumns+` FROM order_sagas WHERE order_id=$1 FOR UPDATE`, id).Scan(&s.OrderID, &s.State, &s.Version, &s.DeliveryID, &s.DeliveryVersion, &s.CourierID, &s.CommandID, &s.CommandType, &s.CommandSequence, &s.Attempts, &s.Deadline, &s.NextAttempt, &s.Reason, &s.CorrelationID, &s.CreatedAt, &s.UpdatedAt, &s.CancelReason, &s.LegacyReconciliation, &s.DispatchDeadline)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return s, domain.ErrNotFound
 	}
@@ -36,8 +36,8 @@ func loadSaga(ctx context.Context, tx pgx.Tx, id int64) (domain.Saga, error) {
 	return s, nil
 }
 func saveSaga(ctx context.Context, tx pgx.Tx, s domain.Saga) error {
-	_, err := tx.Exec(ctx, `INSERT INTO order_sagas(`+sagaColumns+`) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
- ON CONFLICT(order_id) DO UPDATE SET state=EXCLUDED.state,version=EXCLUDED.version,delivery_id=EXCLUDED.delivery_id,delivery_version=EXCLUDED.delivery_version,courier_id=EXCLUDED.courier_id,command_id=EXCLUDED.command_id,command_type=EXCLUDED.command_type,command_sequence=EXCLUDED.command_sequence,attempts=EXCLUDED.attempts,deadline=EXCLUDED.deadline,next_attempt_at=EXCLUDED.next_attempt_at,reason=EXCLUDED.reason,correlation_id=EXCLUDED.correlation_id,updated_at=EXCLUDED.updated_at,cancel_reason=EXCLUDED.cancel_reason,legacy_reconciliation=EXCLUDED.legacy_reconciliation`, s.OrderID, s.State, s.Version, s.DeliveryID, s.DeliveryVersion, s.CourierID, s.CommandID, s.CommandType, s.CommandSequence, s.Attempts, s.Deadline, s.NextAttempt, s.Reason, s.CorrelationID, s.CreatedAt, s.UpdatedAt, s.CancelReason, s.LegacyReconciliation)
+	_, err := tx.Exec(ctx, `INSERT INTO order_sagas(`+sagaColumns+`) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+ ON CONFLICT(order_id) DO UPDATE SET state=EXCLUDED.state,version=EXCLUDED.version,delivery_id=EXCLUDED.delivery_id,delivery_version=EXCLUDED.delivery_version,courier_id=EXCLUDED.courier_id,command_id=EXCLUDED.command_id,command_type=EXCLUDED.command_type,command_sequence=EXCLUDED.command_sequence,attempts=EXCLUDED.attempts,deadline=EXCLUDED.deadline,next_attempt_at=EXCLUDED.next_attempt_at,reason=EXCLUDED.reason,correlation_id=EXCLUDED.correlation_id,updated_at=EXCLUDED.updated_at,cancel_reason=EXCLUDED.cancel_reason,legacy_reconciliation=EXCLUDED.legacy_reconciliation,dispatch_deadline=EXCLUDED.dispatch_deadline`, s.OrderID, s.State, s.Version, s.DeliveryID, s.DeliveryVersion, s.CourierID, s.CommandID, s.CommandType, s.CommandSequence, s.Attempts, s.Deadline, s.NextAttempt, s.Reason, s.CorrelationID, s.CreatedAt, s.UpdatedAt, s.CancelReason, s.LegacyReconciliation, s.DispatchDeadline)
 	if err != nil {
 		return fmt.Errorf("save saga: %w", err)
 	}

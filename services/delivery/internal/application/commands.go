@@ -6,6 +6,7 @@ import (
 
 	commands "example.com/food/contracts/delivery/commands/v1"
 	events "example.com/food/contracts/delivery/v1"
+	"example.com/food/contracts/geo"
 	"example.com/food/delivery/internal/domain"
 )
 
@@ -32,6 +33,8 @@ func ApplyDeliveryCommand(c commands.Command, current *domain.Delivery, preparat
 		if err != nil {
 			return change, err
 		}
+		d.RestaurantLocation = geo.Clone(c.Payload.RestaurantLocation)
+		d.DispatchDeadline = c.Payload.DispatchDeadline
 		d.DeliveryAddress = c.Payload.DeliveryAddress
 		if preparation {
 			d.ObservePreparation()
@@ -43,8 +46,11 @@ func ApplyDeliveryCommand(c commands.Command, current *domain.Delivery, preparat
 		}
 	} else {
 		d = *current
-		if d.AmountToCollectMinor != c.Payload.AmountToCollectMinor || d.Currency != c.Payload.Currency || d.DeliveryAddress != c.Payload.DeliveryAddress {
+		if d.AmountToCollectMinor != c.Payload.AmountToCollectMinor || d.Currency != c.Payload.Currency || d.DeliveryAddress != c.Payload.DeliveryAddress || !geo.Equal(d.RestaurantLocation, c.Payload.RestaurantLocation) {
 			return change, ErrEventConflict
+		}
+		if c.CommandType == commands.CreateDelivery && c.Payload.DispatchDeadline != nil {
+			d.DispatchDeadline = c.Payload.DispatchDeadline
 		}
 		change.EventType = events.DeliveryStateReported
 	}

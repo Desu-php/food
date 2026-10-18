@@ -48,11 +48,15 @@ func (f *Fulfillment) command(ctx context.Context, o domain.Order, s *domain.Sag
 	s.Attempts = 1
 	s.NextAttempt = now.Add(RetryDelay(1, f.cfg.RetryBase, f.cfg.RetryMax))
 	v := o.Snapshot()
+	if kind == commands.CreateDelivery {
+		deadline := now.Add(f.cfg.AssignmentTimeout).UTC()
+		s.DispatchDeadline = &deadline
+	}
 	fulfillmentType := ""
 	if !v.LegacyDeliveryAddress {
 		fulfillmentType = string(v.FulfillmentType)
 	}
-	return commands.Command{MessageID: s.CommandID, CommandType: kind, CorrelationID: id, AggregateID: v.ID, AggregateVersion: s.CommandSequence, SchemaVersion: 1, OccurredAt: now.UTC(), Payload: commands.Payload{FulfillmentType: fulfillmentType, DeliveryAddress: v.DeliveryAddress, OrderID: v.ID, OrderVersion: v.Version, AmountToCollectMinor: v.SubtotalMinor, Currency: v.Currency}}
+	return commands.Command{MessageID: s.CommandID, CommandType: kind, CorrelationID: id, AggregateID: v.ID, AggregateVersion: s.CommandSequence, SchemaVersion: 1, OccurredAt: now.UTC(), Payload: commands.Payload{RestaurantLocation: v.RestaurantLocation, DispatchDeadline: s.DispatchDeadline, FulfillmentType: fulfillmentType, DeliveryAddress: v.DeliveryAddress, OrderID: v.ID, OrderVersion: v.Version, AmountToCollectMinor: v.SubtotalMinor, Currency: v.Currency}}
 }
 func (f *Fulfillment) Accept(ctx context.Context, o *domain.Order, s *domain.Saga, now time.Time) (FulfillmentChange, error) {
 	if o.Snapshot().FulfillmentType == domain.Pickup {
@@ -151,6 +155,17 @@ func (f *Fulfillment) wait(s *domain.Saga, d time.Duration, now time.Time) {
 	s.CommandType = ""
 	s.Reason = ""
 }
+
+// The dispatch window is published before the remote creation and cannot be
+// extended by delayed responses or refusals. Historical Sagas have no such field.
+func (f *Fulfillment) waitAssignment(s *domain.Saga, now time.Time) {
+	f.wait(s, f.cfg.AssignmentTimeout, now)
+	if s.DispatchDeadline != nil {
+		s.Deadline = *s.DispatchDeadline
+		s.NextAttempt = s.Deadline
+	}
+}
+
 func (f *Fulfillment) Tick(ctx context.Context, o *domain.Order, s *domain.Saga, now time.Time) (FulfillmentChange, error) {
 	if o.Snapshot().FulfillmentType != domain.Delivery {
 		return FulfillmentChange{}, domain.ErrInvalidTransition
@@ -231,6 +246,13 @@ func (f *Fulfillment) Retry(ctx context.Context, o *domain.Order, s *domain.Saga
 		s.Reason = ""
 		return FulfillmentChange{ReplayCommandID: old, Commands: []commands.Command{f.command(ctx, *o, s, commands.CreateDelivery, now)}}, nil
 	}
+	if s.CourierID == 0 && !o.PreparationStarted() {
+		s.Deadline = now.Add(f.cfg.CreateTimeout)
+		if err := s.Move(domain.SagaCreatingDelivery, now); err != nil {
+			return FulfillmentChange{}, err
+		}
+		return FulfillmentChange{Commands: []commands.Command{f.command(ctx, *o, s, commands.CreateDelivery, now)}}, nil
+	}
 	if err := s.Move(phaseFor(*o, s.CourierID), now); err != nil {
 		return FulfillmentChange{}, err
 	}
@@ -302,7 +324,7 @@ func (f *Fulfillment) HandleDelivery(ctx context.Context, o *domain.Order, s *do
 			if err := s.Move(phaseFor(*o, 0), now); err != nil {
 				return change, err
 			}
-			f.wait(s, f.cfg.AssignmentTimeout, now)
+			f.waitAssignment(s, now)
 		}
 	case delivery.CourierAssigned:
 		if o.Snapshot().CourierID != e.Payload.CourierID {
@@ -339,7 +361,7 @@ func (f *Fulfillment) HandleDelivery(ctx context.Context, o *domain.Order, s *do
 			if err := s.Move(target, now); err != nil {
 				return change, err
 			}
-			f.wait(s, f.cfg.AssignmentTimeout, now)
+			f.waitAssignment(s, now)
 		}
 	case delivery.DeliveryPickedUp:
 		if o.Snapshot().Status != domain.OnTheWay {

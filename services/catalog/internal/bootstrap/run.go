@@ -40,7 +40,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 	err = pool.Ping(startupCtx)
 	if err == nil {
 		// A reachable database without migrations is not a ready catalog.
-		_, err = pool.Exec(startupCtx, "SELECT r.id,r.name,r.is_open,r.created_at,r.updated_at,c.id,c.name,c.sort_order,c.created_at,c.updated_at,i.id,i.name,i.description,i.price_minor,i.currency,i.is_available,i.created_at,i.updated_at,i.deleted_at FROM restaurants r LEFT JOIN menu_categories c ON c.restaurant_id=r.id LEFT JOIN menu_items i ON i.restaurant_id=c.restaurant_id AND i.category_id=c.id LIMIT 0")
+		_, err = pool.Exec(startupCtx, "SELECT r.latitude,r.longitude,r.id,r.name,r.is_open,r.created_at,r.updated_at,c.id,c.name,c.sort_order,c.created_at,c.updated_at,i.id,i.name,i.description,i.price_minor,i.currency,i.is_available,i.created_at,i.updated_at,i.deleted_at FROM restaurants r LEFT JOIN menu_categories c ON c.restaurant_id=r.id LEFT JOIN menu_items i ON i.restaurant_id=c.restaurant_id AND i.category_id=c.id LIMIT 0")
 	}
 	cancel()
 	if err != nil {
@@ -52,7 +52,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 	menu := application.NewMenu(repo, postgres.NewMenu(pool))
 	ready := func(ctx context.Context) error {
 		// Also verifies the schema remains available after startup.
-		_, err := pool.Exec(ctx, "SELECT r.id,r.name,r.is_open,r.created_at,r.updated_at,c.id,c.name,c.sort_order,c.created_at,c.updated_at,i.id,i.name,i.description,i.price_minor,i.currency,i.is_available,i.created_at,i.updated_at,i.deleted_at FROM restaurants r LEFT JOIN menu_categories c ON c.restaurant_id=r.id LEFT JOIN menu_items i ON i.restaurant_id=c.restaurant_id AND i.category_id=c.id LIMIT 0")
+		_, err := pool.Exec(ctx, "SELECT r.latitude,r.longitude,r.id,r.name,r.is_open,r.created_at,r.updated_at,c.id,c.name,c.sort_order,c.created_at,c.updated_at,i.id,i.name,i.description,i.price_minor,i.currency,i.is_available,i.created_at,i.updated_at,i.deleted_at FROM restaurants r LEFT JOIN menu_categories c ON c.restaurant_id=r.id LEFT JOIN menu_items i ON i.restaurant_id=c.restaurant_id AND i.category_id=c.id LIMIT 0")
 		return err
 	}
 	server := &http.Server{

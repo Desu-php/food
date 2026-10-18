@@ -16,7 +16,7 @@ import (
 	"example.com/food/orders/internal/application"
 )
 
-const consumerSchemaCheck = `SELECT i.event_id,s.order_id,s.delivery_version,o.courier_id FROM delivery_inbox i LEFT JOIN order_sagas s ON false LEFT JOIN orders o ON false LIMIT 0`
+const consumerSchemaCheck = `SELECT o.latitude,o.longitude,s.dispatch_deadline,i.event_id,s.order_id,s.delivery_version,o.courier_id FROM delivery_inbox i LEFT JOIN order_sagas s ON false LEFT JOIN orders o ON false LIMIT 0`
 
 func RunConsumer(ctx context.Context, c ConsumerConfig, logger *slog.Logger, replay ...ReplayOptions) error {
 	cfg, err := pgxpool.ParseConfig(c.DatabaseURL)

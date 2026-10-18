@@ -266,6 +266,7 @@ func TestFulfillmentMigrationPreservesHistoricalData(t *testing.T) {
 	if _, err := pool.Exec(ctx, string(pickupSQL)); err != nil {
 		t.Fatal(err)
 	}
+	applyDispatchMigration(t, pool)
 	current, err := NewOrders(pool).Get(ctx, 7, id)
 	if err != nil || current.Snapshot().Status != domain.WaitingRestaurant {
 		t.Fatal(current, err)

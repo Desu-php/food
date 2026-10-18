@@ -56,7 +56,7 @@ func RunSagaWorker(ctx context.Context, c ConsumerConfig, policy application.Sag
 	}
 	defer pool.Close()
 	check, cancel := context.WithTimeout(ctx, 5*time.Second)
-	_, err = pool.Exec(check, `SELECT s.order_id,s.next_attempt_at,o.stream FROM order_sagas s LEFT JOIN outbox_events o ON false LIMIT 0`)
+	_, err = pool.Exec(check, `SELECT s.dispatch_deadline,s.order_id,s.next_attempt_at,o.stream FROM order_sagas s LEFT JOIN outbox_events o ON false LIMIT 0`)
 	cancel()
 	if err != nil {
 		return errors.New("saga schema check failed")

@@ -102,13 +102,23 @@ func (r *Repository) ProcessCommand(ctx context.Context, c commands.Command) err
 		return fmt.Errorf("apply delivery command: %w", err)
 	}
 	d := change.Delivery
+	var latitude, longitude *float64
+	if d.RestaurantLocation != nil {
+		latitude = &d.RestaurantLocation.Latitude
+		longitude = &d.RestaurantLocation.Longitude
+	}
 	if current == nil {
-		err = tx.QueryRow(ctx, `INSERT INTO deliveries(order_id,status,amount_to_collect_minor,currency,version,order_version,preparation_started,ready,created_at,updated_at,delivery_address) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`, d.OrderID, d.Status, d.AmountToCollectMinor, d.Currency, d.Version, d.OrderVersion, d.PreparationStarted, d.Ready, d.CreatedAt, d.UpdatedAt, d.DeliveryAddress).Scan(&d.ID)
+		err = tx.QueryRow(ctx, `INSERT INTO deliveries(order_id,status,amount_to_collect_minor,currency,version,order_version,preparation_started,ready,created_at,updated_at,delivery_address,latitude,longitude,dispatch_deadline) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`, d.OrderID, d.Status, d.AmountToCollectMinor, d.Currency, d.Version, d.OrderVersion, d.PreparationStarted, d.Ready, d.CreatedAt, d.UpdatedAt, d.DeliveryAddress, latitude, longitude, d.DispatchDeadline).Scan(&d.ID)
 		if err != nil {
 			return err
 		}
 	} else if err = saveDelivery(ctx, tx, d); err != nil {
 		return err
+	}
+	if c.CommandType == commands.CreateDelivery && current != nil && d.Status == domain.PendingAssignment && c.Payload.DispatchDeadline != nil {
+		if _, err = tx.Exec(ctx, `UPDATE deliveries SET dispatch_attempts=0,dispatch_paused=false,dispatch_next_at=now(),dispatch_reason='',dispatch_token=NULL,dispatch_lease_until=NULL WHERE id=$1`, d.ID); err != nil {
+			return err
+		}
 	}
 	if change.ReleaseCourierID > 0 {
 		if _, err = tx.Exec(ctx, `UPDATE couriers SET status='AVAILABLE',updated_at=$2 WHERE id=$1`, change.ReleaseCourierID, d.UpdatedAt); err != nil {

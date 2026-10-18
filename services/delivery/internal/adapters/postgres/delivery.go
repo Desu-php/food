@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"example.com/food/contracts/geo"
 	"example.com/food/delivery/internal/application"
 	"example.com/food/delivery/internal/domain"
 )
@@ -50,13 +51,17 @@ func (r *Repository) Couriers(ctx context.Context, after int64, limit int) ([]do
 	return result, rows.Err()
 }
 
-const deliveryColumns = `d.id,d.order_id,COALESCE(d.courier_id,0),d.status,d.amount_to_collect_minor,d.currency,d.version,d.order_version,d.ready,d.preparation_started,d.created_at,d.updated_at,d.delivery_address`
+const deliveryColumns = `d.id,d.order_id,COALESCE(d.courier_id,0),d.status,d.amount_to_collect_minor,d.currency,d.version,d.order_version,d.ready,d.preparation_started,d.created_at,d.updated_at,d.delivery_address,d.latitude,d.longitude,d.dispatch_deadline,d.dispatch_attempts,d.dispatch_reason,d.dispatch_next_at,d.dispatch_paused`
 
 func scanDelivery(row pgx.Row) (domain.Delivery, error) {
 	var d domain.Delivery
-	err := row.Scan(&d.ID, &d.OrderID, &d.CourierID, &d.Status, &d.AmountToCollectMinor, &d.Currency, &d.Version, &d.OrderVersion, &d.Ready, &d.PreparationStarted, &d.CreatedAt, &d.UpdatedAt, &d.DeliveryAddress)
+	var latitude, longitude *float64
+	err := row.Scan(&d.ID, &d.OrderID, &d.CourierID, &d.Status, &d.AmountToCollectMinor, &d.Currency, &d.Version, &d.OrderVersion, &d.Ready, &d.PreparationStarted, &d.CreatedAt, &d.UpdatedAt, &d.DeliveryAddress, &latitude, &longitude, &d.DispatchDeadline, &d.DispatchAttempts, &d.DispatchReason, &d.DispatchNextAt, &d.DispatchPaused)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return d, domain.ErrNotFound
+	}
+	if latitude != nil && longitude != nil {
+		d.RestaurantLocation = &geo.Point{Latitude: *latitude, Longitude: *longitude}
 	}
 	return d, err
 }
@@ -138,11 +143,18 @@ func (r *Repository) Change(ctx context.Context, id int64, kind string, change f
 	return d, nil
 }
 func saveDelivery(ctx context.Context, tx pgx.Tx, d domain.Delivery) error {
-	_, err := tx.Exec(ctx, `UPDATE deliveries SET courier_id=NULLIF($2,0),status=$3,version=$4,updated_at=$5,preparation_started=$6,ready=$7,order_version=$8 WHERE id=$1`, d.ID, d.CourierID, d.Status, d.Version, d.UpdatedAt, d.PreparationStarted, d.Ready, d.OrderVersion)
+	_, err := tx.Exec(ctx, `UPDATE deliveries SET courier_id=NULLIF($2,0),status=$3,version=$4,updated_at=$5,preparation_started=$6,ready=$7,order_version=$8,dispatch_deadline=$9,
+ dispatch_token=CASE WHEN $3<>'PENDING_ASSIGNMENT' OR $6 THEN NULL ELSE dispatch_token END,
+ dispatch_lease_until=CASE WHEN $3<>'PENDING_ASSIGNMENT' OR $6 THEN NULL ELSE dispatch_lease_until END,
+ dispatch_paused=CASE WHEN $3='ASSIGNED' THEN false ELSE dispatch_paused END,
+ dispatch_reason=CASE WHEN $3='ASSIGNED' THEN 'assigned' WHEN $3='CANCELLED' THEN 'cancelled' WHEN $6 AND $3='PENDING_ASSIGNMENT' THEN 'manual_assignment_required_after_preparation' ELSE dispatch_reason END
+ WHERE id=$1`, d.ID, d.CourierID, d.Status, d.Version, d.UpdatedAt, d.PreparationStarted, d.Ready, d.OrderVersion, d.DispatchDeadline)
 	return conflict(err)
 }
 func writeDeliveryChange(ctx context.Context, tx pgx.Tx, old, d domain.Delivery, kind string) (domain.Delivery, error) {
 	if old.Status == domain.PendingAssignment && d.Status == domain.Assigned {
+		d.DispatchReason = "assigned"
+		d.DispatchPaused = false
 		var status string
 		err := tx.QueryRow(ctx, `SELECT status FROM couriers WHERE id=$1 FOR UPDATE`, d.CourierID).Scan(&status)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -160,6 +172,18 @@ func writeDeliveryChange(ctx context.Context, tx pgx.Tx, old, d domain.Delivery,
 	}
 	if old.CourierID > 0 && (d.CourierID != old.CourierID || d.Status == domain.Delivered || d.Status == domain.Cancelled) && (old.Status == domain.Assigned || old.Status == domain.PickedUp) {
 		if _, err := tx.Exec(ctx, `UPDATE couriers SET status='AVAILABLE',updated_at=$2 WHERE id=$1`, old.CourierID, d.UpdatedAt); err != nil {
+			return d, err
+		}
+	}
+	if old.Status == domain.Assigned && d.Status == domain.PendingAssignment {
+		d.DispatchAttempts = 0
+		d.DispatchPaused = false
+		d.DispatchReason = ""
+		d.DispatchNextAt = time.Now()
+		if _, err := tx.Exec(ctx, `INSERT INTO dispatch_declines(delivery_id,courier_id) VALUES($1,$2) ON CONFLICT(delivery_id,courier_id) DO UPDATE SET declined_at=clock_timestamp()`, d.ID, old.CourierID); err != nil {
+			return d, err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE deliveries SET dispatch_attempts=0,dispatch_paused=false,dispatch_next_at=now(),dispatch_reason='',dispatch_token=NULL,dispatch_lease_until=NULL WHERE id=$1`, d.ID); err != nil {
 			return d, err
 		}
 	}

@@ -58,6 +58,9 @@ func integrationPool(t *testing.T, migrations ...string) *pgxpool.Pool {
 	if len(migrations) > 1 && migrations[len(migrations)-1] != "000003_restaurant_address" {
 		migrations = append(migrations, "000003_restaurant_address")
 	}
+	if len(migrations) > 1 {
+		migrations = append(migrations, "000004_restaurant_geolocation")
+	}
 	for _, migration := range migrations {
 		sql, err := os.ReadFile("../../../migrations/" + migration + ".up.sql")
 		if err != nil {

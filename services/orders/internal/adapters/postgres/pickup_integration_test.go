@@ -16,12 +16,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	events "example.com/food/contracts/orders/v1"
 	"example.com/food/orders/internal/adapters/catalog"
 	httpadapter "example.com/food/orders/internal/adapters/http"
 	"example.com/food/orders/internal/application"
 	"example.com/food/orders/internal/domain"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func createPickup(t *testing.T, r *Orders, key string) domain.Order {
@@ -350,6 +351,7 @@ func TestPickupMigrationPreservesHistoricalFactsAndGuardsDowngrade(t *testing.T)
 	if _, err := pool.Exec(ctx, string(up)); err != nil {
 		t.Fatal(err)
 	}
+	applyDispatchMigration(t, pool)
 	legacy, err := NewOrders(pool).Get(ctx, 7, id)
 	if err != nil {
 		t.Fatal(err)

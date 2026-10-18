@@ -1,4 +1,4 @@
-# Архитектура Catalog
+# Архитектура Food Delivery
 
 ## Направление зависимостей
 
@@ -13,7 +13,7 @@ flowchart LR
   Boot --> App
 ```
 
-Domain использует только стандартную библиотеку и не знает о JSON/SQL. Application
+Domain не зависит от HTTP и SQL; координаты представлены чистым geo value object. Application
 знает доменную модель и определяет порт persistence. PostgreSQL реализует этот
 порт; HTTP вызывает use cases и преобразует доменные ошибки в HTTP-ответы.
 Bootstrap — composition root: единственное место, которое знает все реализации.
@@ -200,3 +200,16 @@ Consumer сохраняет poison и зависимые сообщения за
 replay аудируется и не обходит Inbox/доменные инварианты.
 См. [настройку и recovery](../../docs/security-reliability.md) и
 [ADR 0006](../../docs/adr/0006-security-and-consumer-quarantine.md).
+
+
+## Этап 10: Automatic Dispatch
+
+Delivery API также запускает worker автоматического назначения. PostgreSQL хранит
+lease, deadline, retries и cooldown; Redis GEO даёт только свежих кандидатов.
+Ручное назначение и automatic dispatch используют одни domain/SQL-инварианты и
+CourierAssigned Outbox. PICKUP исключён. Слои application/domain не знают Redis
+клиента: адаптер реализует порт Locations, bootstrap собирает зависимости и
+останавливает worker перед закрытием ресурсов.
+
+[API, архитектура, конфигурация и rollout](../../docs/automatic-dispatch.md),
+[ADR 0007](../../docs/adr/0007-automatic-dispatch-and-redis-geo.md).

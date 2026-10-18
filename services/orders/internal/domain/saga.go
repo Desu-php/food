@@ -23,6 +23,7 @@ var ErrSagaTransition = errors.New("invalid fulfillment saga transition")
 
 // Saga tracks remote progress and durable scheduling, not a distributed SQL transaction.
 type Saga struct {
+	DispatchDeadline     *time.Time
 	OrderID              int64
 	State                string
 	Version              int64

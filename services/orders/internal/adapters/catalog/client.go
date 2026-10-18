@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"example.com/food/contracts/geo"
 	"example.com/food/orders/internal/application"
 	"example.com/food/orders/internal/domain"
 )
@@ -81,10 +82,11 @@ func (c *Client) Quote(ctx context.Context, restaurantID int64, items []applicat
 		return application.CatalogQuote{}, application.ErrCatalogUnavailable
 	}
 	var quote struct {
-		PickupAddress string `json:"pickup_address"`
-		RestaurantID  int64  `json:"restaurant_id"`
-		Currency      string `json:"currency"`
-		Items         []struct {
+		RestaurantLocation *geo.Point `json:"restaurant_location"`
+		PickupAddress      string     `json:"pickup_address"`
+		RestaurantID       int64      `json:"restaurant_id"`
+		Currency           string     `json:"currency"`
+		Items              []struct {
 			MenuItemID     int64  `json:"menu_item_id"`
 			RestaurantID   int64  `json:"restaurant_id"`
 			Name           string `json:"name"`
@@ -94,6 +96,9 @@ func (c *Client) Quote(ctx context.Context, restaurantID int64, items []applicat
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(body, &quote); err != nil || quote.RestaurantID != restaurantID || quote.Currency != domain.CurrencyTJS || len(quote.Items) != len(items) {
+		return application.CatalogQuote{}, application.ErrCatalogUnavailable
+	}
+	if quote.RestaurantLocation != nil && !quote.RestaurantLocation.Valid() {
 		return application.CatalogQuote{}, application.ErrCatalogUnavailable
 	}
 	result := make([]domain.PricedItem, 0, len(quote.Items))
@@ -109,5 +114,5 @@ func (c *Client) Quote(ctx context.Context, restaurantID int64, items []applicat
 		delete(expected, p.MenuItemID)
 		result = append(result, domain.PricedItem{MenuItemID: p.MenuItemID, RestaurantID: p.RestaurantID, Name: p.Name, Quantity: p.Quantity, UnitPriceMinor: p.UnitPriceMinor, Currency: p.Currency})
 	}
-	return application.CatalogQuote{Items: result, PickupAddress: quote.PickupAddress}, nil
+	return application.CatalogQuote{RestaurantLocation: quote.RestaurantLocation, Items: result, PickupAddress: quote.PickupAddress}, nil
 }

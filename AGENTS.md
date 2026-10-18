@@ -54,7 +54,7 @@ without implementing it.
 ## Current scope
 
 Production Foundation, Catalog, Orders, Notifications, Restaurant Order
-Fulfillment Saga orchestration, PICKUP and Delivery with operational POS collection, Security & Reliability Hardening. Future modules require
+Fulfillment Saga orchestration, PICKUP and Delivery with operational POS collection, Security & Reliability Hardening, Automatic Courier Dispatch + Redis GEO. Future modules require
 separate tasks. The user's current explicit instructions take precedence over this file.
 
 ## MVP payment and fulfillment decision
@@ -157,3 +157,42 @@ Monitor open consumer_quarantine even when Kafka lag is low. See
 
 Run scripts/check.sh and scripts/test-integration.sh; CI covers every Go module,
 independent builds, PostgreSQL/Redpanda, migration round trips and Compose validation.
+
+
+## Stage 10: automatic courier dispatch and Redis GEO
+
+Delivery owns automatic dispatch inside its API process; do not create a Dispatch
+service or another Saga. Catalog owns optional paired restaurant coordinates;
+Orders obtains and validates a private quote and persists an immutable DELIVERY
+snapshot. Only the versioned CreateDelivery command carries that snapshot to
+Delivery. Preserve historical NULL coordinates, addresses, events and canonical
+Inbox fingerprints; new optional contract fields must use omitempty. Roll out
+migrations and all consumers before new producers.
+
+Redis GEO is an ephemeral candidate index, never assignment authority. Authenticate
+courier GPS through the server-mapped principal; reject body courier IDs. Validate
+coordinates, apply Redis member freshness and a shared rate limit, and remove or
+exclude stale entries. Never persist each GPS update in PostgreSQL. Redis GEO's
+latitude projection limit is explicit; polar restaurants require manual assignment.
+Geographic distance is approximate and must never be called road ETA.
+
+Claim due PENDING_ASSIGNMENT with a short PostgreSQL SKIP LOCKED lease and UUID
+fencing token. Close the transaction before Redis I/O. Recheck lease, deadline,
+preparation/cancellation state, candidate freshness, AVAILABLE and decline cooldown
+in a new short transaction. Reuse domain.Assign, courier/delivery row locks, the
+active-courier unique index and existing transactional CourierAssigned Outbox.
+Manual assignment competes through the same locks. Multiple workers must be safe.
+Cooperate with the existing consumer quarantine fence during SQL assignment.
+
+Saga publishes/persists the dispatch deadline. Bounded retries never extend it;
+only authorized Saga retry may issue a new command/window for an active order.
+Worker never cancels orders. Refusal before cooking restarts selection with a
+persisted per-delivery/courier cooldown; after cooking use manual assignment.
+PICKUP never creates dispatch work. Redis failure degrades only auto dispatch/GPS;
+manual fallback, Order Service and PICKUP remain operational. Keep diagnostic
+reasons and retry access for dispatchers under existing OIDC permissions.
+
+See docs/automatic-dispatch.md and docs/adr/0007-automatic-dispatch-and-redis-geo.md.
+Stage 10 explicitly permits Redis, GPS updates and automatic courier selection;
+it supersedes the Stage 8 prohibition only for this authorized functionality.
+No road routing, traffic ETA, online payments or multi-order courier assignment.

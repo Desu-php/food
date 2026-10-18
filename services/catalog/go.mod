@@ -14,7 +14,10 @@ require (
 	golang.org/x/text v0.24.0 // indirect
 )
 
+replace example.com/food/contracts => ../../contracts
+
 require (
+	example.com/food/contracts v0.0.0
 	example.com/food/platform v0.0.0
 	github.com/jackc/pgx/v5 v5.7.6
 )

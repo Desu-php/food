@@ -10,6 +10,11 @@ POS-терминалом курьера либо ресторана. Самов�
 Настройка и восстановление: [Security & Reliability](docs/security-reliability.md),
 [ADR 0006](docs/adr/0006-security-and-consumer-quarantine.md).
 
+Этап 10: автоматическое назначение ближайшего доступного курьера внутри Delivery,
+Redis GEO с TTL, PostgreSQL lease/cooldown и ручной fallback.
+[API, настройки, rollout и восстановление](docs/automatic-dispatch.md),
+[ADR 0007](docs/adr/0007-automatic-dispatch-and-redis-geo.md).
+
 Monorepo для сервисов доставки еды. Реализованы Catalog с ресторанами, категориями и блюдами и Orders с созданием,
 чтением, отменой и постоянной идемпотентностью. У каждого сервиса своя база PostgreSQL,
 Clean Architecture, стандартный net/http, pgx/v5, структурированные JSON-логи slog,
@@ -50,9 +55,9 @@ services/notifications/
   migrations/              processed_events, notifications, failed_messages
 contracts/                 отдельный Go-модуль публичных JSON-контрактов
 scripts/                   интеграционные и полные Compose-проверки
-services/delivery/        Domain, Application, HTTP/PostgreSQL/Kafka, Bootstrap; API/consumer/outbox
+services/delivery/        Domain, Application, HTTP/PostgreSQL/Kafka/Redis GEO, Bootstrap; API/consumer/outbox + Dispatch Worker
 contracts/delivery/commands/v1/  CreateDelivery / CancelDelivery, отдельные от events
-deploy/compose.yaml       два PostgreSQL, четыре сервисные БД, Redpanda, миграции и workers
+deploy/compose.yaml       два PostgreSQL, четыре сервисные БД, Redpanda, Redis, миграции и workers
 docs/adr/0001-orders-catalog-integration.md  принятые решения и sequence diagram
 docs/architecture.md      решения и границы слоёв
 ```

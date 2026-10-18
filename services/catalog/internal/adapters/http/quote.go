@@ -9,6 +9,7 @@ import (
 
 	"example.com/food/catalog/internal/application"
 	"example.com/food/catalog/internal/domain"
+	"example.com/food/contracts/geo"
 )
 
 // NewInternalHandler must be served on a separate, private listener. Public
@@ -67,11 +68,12 @@ func NewInternalHandler(quotes *application.Quotes, logger *slog.Logger, timeout
 			result = append(result, itemDTO{p.ID, p.RestaurantID, p.Name, quantities[p.ID], p.PriceMinor, p.Currency})
 		}
 		h.writeJSON(w, 200, struct {
-			PickupAddress string    `json:"pickup_address,omitempty"`
-			RestaurantID  int64     `json:"restaurant_id"`
-			Currency      string    `json:"currency"`
-			Items         []itemDTO `json:"items"`
-		}{quote.PickupAddress, input.RestaurantID, domain.CurrencyTJS, result})
+			RestaurantLocation *geo.Point `json:"restaurant_location,omitempty"`
+			PickupAddress      string     `json:"pickup_address,omitempty"`
+			RestaurantID       int64      `json:"restaurant_id"`
+			Currency           string     `json:"currency"`
+			Items              []itemDTO  `json:"items"`
+		}{quote.RestaurantLocation, quote.PickupAddress, input.RestaurantID, domain.CurrencyTJS, result})
 	})
 	mux.HandleFunc("/internal/v1/menu/quote", h.methodNotAllowed("POST"))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { h.writeError(w, 404, "endpoint not found") })

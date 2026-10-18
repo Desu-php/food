@@ -4,33 +4,39 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"example.com/food/delivery/internal/application"
 	"example.com/food/platform/security"
 )
 
 type Config struct {
-	Authentication    security.Config
-	DispatcherIDs     []int64
-	AppEnv            string
-	DevAuthEnabled    bool
-	HTTPAddr          string
-	DatabaseURL       string
-	LogLevel          slog.Level
-	DBMaxConns        int32
-	DBMinConns        int32
-	DBConnectTimeout  time.Duration
-	DBMaxConnLifetime time.Duration
-	DBMaxConnIdleTime time.Duration
-	ReadHeaderTimeout time.Duration
-	ReadTimeout       time.Duration
-	WriteTimeout      time.Duration
-	IdleTimeout       time.Duration
-	RequestTimeout    time.Duration
-	ShutdownTimeout   time.Duration
+	Dispatch                      application.DispatchConfig
+	DispatchEnabled               bool
+	RedisURL                      string
+	LocationTTL, LocationInterval time.Duration
+	Authentication                security.Config
+	DispatcherIDs                 []int64
+	AppEnv                        string
+	DevAuthEnabled                bool
+	HTTPAddr                      string
+	DatabaseURL                   string
+	LogLevel                      slog.Level
+	DBMaxConns                    int32
+	DBMinConns                    int32
+	DBConnectTimeout              time.Duration
+	DBMaxConnLifetime             time.Duration
+	DBMaxConnIdleTime             time.Duration
+	ReadHeaderTimeout             time.Duration
+	ReadTimeout                   time.Duration
+	WriteTimeout                  time.Duration
+	IdleTimeout                   time.Duration
+	RequestTimeout                time.Duration
+	ShutdownTimeout               time.Duration
 }
 
 func LoadConfig() (Config, error) {
@@ -109,6 +115,38 @@ func LoadConfig() (Config, error) {
 		return c, authErr
 	}
 	c.Authentication = authentication
+	c.Dispatch = application.DefaultDispatchConfig()
+	c.RedisURL = env("REDIS_URL", "redis://redis:6379/0")
+	c.DispatchEnabled, err = strconv.ParseBool(env("DISPATCH_ENABLED", "true"))
+	if err != nil {
+		return c, errors.New("invalid DISPATCH_ENABLED")
+	}
+	for _, v := range []struct {
+		key, fallback string
+		target        *time.Duration
+	}{
+		{"DISPATCH_POLL_INTERVAL", "1s", &c.Dispatch.PollInterval}, {"DISPATCH_LEASE", "15s", &c.Dispatch.Lease},
+		{"DISPATCH_RETRY_INTERVAL", "5s", &c.Dispatch.RetryInterval}, {"DISPATCH_COOLDOWN", "2m", &c.Dispatch.Cooldown},
+		{"DISPATCH_OPERATION_TIMEOUT", "3s", &c.Dispatch.OperationTimeout}, {"LOCATION_TTL", "60s", &c.LocationTTL}, {"LOCATION_MIN_INTERVAL", "5s", &c.LocationInterval},
+	} {
+		d, e := time.ParseDuration(env(v.key, v.fallback))
+		if e != nil || d < time.Millisecond {
+			return c, fmt.Errorf("invalid %s", v.key)
+		}
+		*v.target = d
+	}
+	c.Dispatch.RadiusMeters, err = strconv.ParseFloat(env("DISPATCH_RADIUS_METERS", "5000"), 64)
+	if err != nil || math.IsNaN(c.Dispatch.RadiusMeters) || math.IsInf(c.Dispatch.RadiusMeters, 0) || c.Dispatch.RadiusMeters <= 0 || c.Dispatch.RadiusMeters > 100000 {
+		return c, errors.New("invalid DISPATCH_RADIUS_METERS")
+	}
+	c.Dispatch.MaxAttempts, err = strconv.Atoi(env("DISPATCH_MAX_ATTEMPTS", "60"))
+	if err != nil || c.Dispatch.MaxAttempts < 1 || c.Dispatch.MaxAttempts > 10000 {
+		return c, errors.New("invalid DISPATCH_MAX_ATTEMPTS")
+	}
+	if c.Dispatch.Lease <= c.Dispatch.OperationTimeout || c.LocationInterval >= c.LocationTTL {
+		return c, errors.New("require dispatch lease > operation timeout and location interval < TTL")
+	}
+
 	return c, nil
 }
 

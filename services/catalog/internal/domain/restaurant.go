@@ -5,18 +5,23 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"example.com/food/contracts/geo"
 )
 
 var (
+	ErrCoordinates    = errors.New("provide both latitude [-90,90] and longitude [-180,180]")
 	ErrInvalidAddress = errors.New("address must contain 1 to 500 characters")
 	ErrInvalidName    = errors.New("name must contain 1 to 200 characters")
 	ErrInvalidID      = errors.New("restaurant id must be positive")
 	ErrNotFound       = errors.New("restaurant not found")
-	ErrEmptyUpdate    = errors.New("provide name or is_open to update")
+	ErrEmptyUpdate    = errors.New("provide name, address, is_open or coordinates to update")
 )
 
 // Restaurant is a catalog entity. IDs and timestamps are assigned by persistence.
 type Restaurant struct {
+	Latitude  *float64
+	Longitude *float64
 	ID        int64
 	Name      string
 	Address   string
@@ -26,9 +31,11 @@ type Restaurant struct {
 }
 
 type RestaurantChanges struct {
-	Name    *string
-	Address *string
-	IsOpen  *bool
+	Latitude  *float64
+	Longitude *float64
+	Name      *string
+	Address   *string
+	IsOpen    *bool
 }
 
 func NormalizeName(name string) (string, error) {
@@ -55,8 +62,11 @@ func ValidateID(id int64) error {
 }
 
 func (c RestaurantChanges) Normalize() (RestaurantChanges, error) {
-	if c.Name == nil && c.IsOpen == nil && c.Address == nil {
+	if c.Name == nil && c.IsOpen == nil && c.Address == nil && c.Latitude == nil && c.Longitude == nil {
 		return RestaurantChanges{}, ErrEmptyUpdate
+	}
+	if (c.Latitude == nil) != (c.Longitude == nil) || c.Latitude != nil && !(geo.Point{Latitude: *c.Latitude, Longitude: *c.Longitude}).Valid() {
+		return RestaurantChanges{}, ErrCoordinates
 	}
 	if c.Address != nil {
 		address, err := NormalizeAddress(*c.Address)

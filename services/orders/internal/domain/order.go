@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"example.com/food/contracts/geo"
 )
 
 const (
@@ -50,6 +52,7 @@ var (
 type Order struct{ state State }
 
 type State struct {
+	RestaurantLocation    *geo.Point `json:",omitempty"`
 	ID                    int64
 	Version               int64
 	CustomerID            int64
@@ -122,6 +125,7 @@ func newOrder(customerID, restaurantID int64, currency string, items []PricedIte
 		s.SubtotalMinor += total
 		s.Items = append(s.Items, OrderItem{MenuItemID: p.MenuItemID, Name: p.Name, Quantity: p.Quantity, UnitPriceMinor: p.UnitPriceMinor, TotalPriceMinor: total})
 	}
+	s.RestaurantLocation = geo.Clone(fulfillment.RestaurantLocation)
 	s.FulfillmentType = fulfillment.Type
 	s.DeliveryAddress = fulfillment.DeliveryAddress
 	s.PickupAddress = fulfillment.PickupAddress
@@ -135,7 +139,12 @@ func newOrder(customerID, restaurantID int64, currency string, items []PricedIte
 	return Order{state: s}, nil
 }
 
-func (o Order) Snapshot() State { s := o.state; s.Items = slices.Clone(s.Items); return s }
+func (o Order) Snapshot() State {
+	s := o.state
+	s.Items = slices.Clone(s.Items)
+	s.RestaurantLocation = geo.Clone(s.RestaurantLocation)
+	return s
+}
 
 // Restore validates persisted state and copies its items before accepting it.
 func Restore(s State) (Order, error) {
@@ -190,6 +199,7 @@ func Restore(s State) (Order, error) {
 		}
 	}
 	s.Items = slices.Clone(s.Items)
+	s.RestaurantLocation = geo.Clone(s.RestaurantLocation)
 	return Order{state: s}, nil
 }
 
@@ -333,15 +343,19 @@ func (o *Order) ConfirmPickup(courier int64, legacy bool, now time.Time) error {
 
 // Fulfillment is immutable after creation; addresses are snapshots of the agreed locations.
 type Fulfillment struct {
-	Type            FulfillmentType
-	DeliveryAddress string
-	PickupAddress   string
+	RestaurantLocation *geo.Point
+	Type               FulfillmentType
+	DeliveryAddress    string
+	PickupAddress      string
 }
 
 func ValidAddress(s string) bool {
 	return s == strings.TrimSpace(s) && s != "" && utf8.ValidString(s) && !strings.ContainsRune(s, 0) && utf8.RuneCountInString(s) <= 500
 }
 func validateFulfillment(s State) error {
+	if s.RestaurantLocation != nil && (!s.RestaurantLocation.Valid() || s.FulfillmentType != Delivery) {
+		return ErrInvalidOrder
+	}
 	if s.DeliveryFeeMinor != 0 {
 		return ErrInvalidOrder
 	} // No delivery tariff exists yet.

@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"example.com/food/contracts/geo"
 )
 
 const (
@@ -58,6 +60,12 @@ type Confirmation struct {
 	ConfirmedAt      time.Time
 }
 type Delivery struct {
+	DispatchPaused       bool
+	RestaurantLocation   *geo.Point
+	DispatchDeadline     *time.Time
+	DispatchAttempts     int
+	DispatchReason       string
+	DispatchNextAt       time.Time
 	DeliveryAddress      string
 	ID                   int64
 	OrderID              int64
