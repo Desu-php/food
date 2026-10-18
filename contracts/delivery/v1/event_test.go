@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	orders "example.com/food/contracts/orders/v1"
+	orders "github.com/Desu-php/food/contracts/orders/v1"
 )
 
 func TestCompletionRequiresMatchingConfirmation(t *testing.T) {

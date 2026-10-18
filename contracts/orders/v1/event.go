@@ -8,7 +8,7 @@ import (
 	"errors"
 	"time"
 
-	"example.com/food/contracts/correlation"
+	"github.com/Desu-php/food/contracts/correlation"
 )
 
 const (

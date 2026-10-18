@@ -9,9 +9,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"example.com/food/contracts/correlation"
-	"example.com/food/contracts/geo"
-	orders "example.com/food/contracts/orders/v1"
+	"github.com/Desu-php/food/contracts/correlation"
+	"github.com/Desu-php/food/contracts/geo"
+	orders "github.com/Desu-php/food/contracts/orders/v1"
 )
 
 const (
