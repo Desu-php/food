@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"example.com/food/contracts/geo"
-	orders "example.com/food/contracts/orders/v1"
+	"github.com/Desu-php/food/contracts/geo"
+	orders "github.com/Desu-php/food/contracts/orders/v1"
 )
 
 func TestCommandContract(t *testing.T) {
