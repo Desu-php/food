@@ -20,6 +20,7 @@ import (
 const maxBodyBytes = 64 << 10
 
 type handler struct {
+	pricing     *application.Pricing
 	restaurants *application.Restaurants
 	menu        *application.Menu
 	ready       func(context.Context) error
@@ -108,9 +109,15 @@ func (d mutationDTO) changes() (domain.RestaurantChanges, error) {
 	return c, nil
 }
 
-func NewHandler(restaurants *application.Restaurants, menu *application.Menu, ready func(context.Context) error, logger *slog.Logger, timeout time.Duration) http.Handler {
+func NewHandler(restaurants *application.Restaurants, menu *application.Menu, ready func(context.Context) error, logger *slog.Logger, timeout time.Duration, pricing ...*application.Pricing) http.Handler {
 	h := &handler{restaurants: restaurants, menu: menu, ready: ready, logger: logger}
+	if len(pricing) > 0 {
+		h.pricing = pricing[0]
+	}
 	mux := http.NewServeMux()
+	if h.pricing != nil {
+		h.registerPricingRoutes(mux)
+	}
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		h.writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
@@ -131,7 +138,7 @@ func NewHandler(restaurants *application.Restaurants, menu *application.Menu, re
 	return h.withMiddleware(mux, timeout)
 }
 
-func (h *handler) withMiddleware(next http.Handler, timeout time.Duration) http.Handler {
+func (h *handler) withMiddleware(next http.Handler, timeout time.Duration, pricing ...*application.Pricing) http.Handler {
 	logger := h.logger
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := &responseWriter{ResponseWriter: w}
@@ -332,6 +339,15 @@ func (h *handler) update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) handleError(w http.ResponseWriter, err error) {
+	for _, e := range []struct {
+		err    error
+		status int
+	}{{domain.ErrTariff, 400}, {domain.ErrMinimumSubtotal, 400}, {domain.ErrTariffConflict, 409}, {domain.ErrTariffNotFound, 404}, {domain.ErrAmountOverflow, 400}} {
+		if errors.Is(err, e.err) {
+			h.writeError(w, e.status, e.err.Error())
+			return
+		}
+	}
 	for _, validation := range []error{domain.ErrCoordinates, domain.ErrInvalidMenuID, domain.ErrCategoryRestaurantMismatch, domain.ErrInvalidPrice, domain.ErrInvalidCurrency, domain.ErrInvalidSortOrder, domain.ErrInvalidDescription, domain.ErrEmptyMenuUpdate} {
 		if errors.Is(err, validation) {
 			h.writeError(w, http.StatusBadRequest, validation.Error())

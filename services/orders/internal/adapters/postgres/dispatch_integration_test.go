@@ -25,7 +25,7 @@ func TestCatalogGeolocationSnapshotCommandAndSaga(t *testing.T) {
 	ctx := context.Background()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"restaurant_id":1,"currency":"TJS","restaurant_location":{"latitude":38.56,"longitude":68.77},"items":[{"menu_item_id":10,"restaurant_id":1,"name":"Dish","quantity":1,"unit_price_minor":6500,"currency":"TJS"}]}`)
+		_, _ = io.WriteString(w, `{"restaurant_id":1,"currency":"TJS","delivery_available":true,"items_subtotal_minor":6500,"total_minor":6500,"pricing_snapshot":{"settings_version":1,"tariff_id":1,"max_distance_meters":2000,"distance_meters":0,"delivery_fee_minor":0},"restaurant_location":{"latitude":38.56,"longitude":68.77},"items":[{"menu_item_id":10,"restaurant_id":1,"name":"Dish","quantity":1,"unit_price_minor":6500,"currency":"TJS"}]}`)
 	}))
 	defer server.Close()
 	client, err := catalogadapter.NewClient(server.URL, time.Second)
@@ -34,7 +34,7 @@ func TestCatalogGeolocationSnapshotCommandAndSaga(t *testing.T) {
 	}
 	defer client.Close()
 	s := application.NewOrders(r, client)
-	request := application.CreateCommand{CustomerID: 7, RestaurantID: 1, FulfillmentType: domain.Delivery, DeliveryAddress: "Customer address", Currency: "TJS", ExpectedSubtotalMinor: 6500, Items: []application.RequestedItem{{MenuItemID: 10, Quantity: 1}}}
+	request := application.CreateCommand{ExpectedTotalMinor: ptrInt64(6500), DeliveryLatitude: ptrFloat64(38.56), DeliveryLongitude: ptrFloat64(68.77), CustomerID: 7, RestaurantID: 1, FulfillmentType: domain.Delivery, DeliveryAddress: "Customer address", Currency: "TJS", ExpectedSubtotalMinor: 6500, Items: []application.RequestedItem{{MenuItemID: 10, Quantity: 1}}}
 	o, err := s.CreateOrder(ctx, request, "geo-snapshot")
 	if err != nil {
 		t.Fatal(err)

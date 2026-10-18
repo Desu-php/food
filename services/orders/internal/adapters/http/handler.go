@@ -52,23 +52,27 @@ func (w *responseWriter) Write(body []byte) (int, error) {
 func (w *responseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 type orderDTO struct {
-	FulfillmentType       domain.FulfillmentType `json:"fulfillment_type"`
-	DeliveryAddress       string                 `json:"delivery_address,omitempty"`
-	PickupAddress         string                 `json:"pickup_address,omitempty"`
-	DeliveryFeeMinor      int64                  `json:"delivery_fee_minor"`
-	ID                    int64                  `json:"id"`
-	CustomerID            int64                  `json:"customer_id"`
-	RestaurantID          int64                  `json:"restaurant_id"`
-	Status                domain.Status          `json:"status"`
-	CourierID             int64                  `json:"courier_id,omitempty"`
-	CancellationRequested bool                   `json:"cancellation_requested"`
-	PaymentMethod         string                 `json:"payment_method"`
-	PaymentStatus         string                 `json:"payment_status"`
-	Currency              string                 `json:"currency"`
-	SubtotalMinor         int64                  `json:"subtotal_minor"`
-	CreatedAt             time.Time              `json:"created_at"`
-	UpdatedAt             time.Time              `json:"updated_at"`
-	Items                 []itemDTO              `json:"items"`
+	DeliveryLatitude      *float64                `json:"delivery_latitude,omitempty"`
+	DeliveryLongitude     *float64                `json:"delivery_longitude,omitempty"`
+	PricingSnapshot       *domain.PricingSnapshot `json:"pricing_snapshot,omitempty"`
+	TotalMinor            int64                   `json:"total_minor,omitempty"`
+	FulfillmentType       domain.FulfillmentType  `json:"fulfillment_type"`
+	DeliveryAddress       string                  `json:"delivery_address,omitempty"`
+	PickupAddress         string                  `json:"pickup_address,omitempty"`
+	DeliveryFeeMinor      int64                   `json:"delivery_fee_minor"`
+	ID                    int64                   `json:"id"`
+	CustomerID            int64                   `json:"customer_id"`
+	RestaurantID          int64                   `json:"restaurant_id"`
+	Status                domain.Status           `json:"status"`
+	CourierID             int64                   `json:"courier_id,omitempty"`
+	CancellationRequested bool                    `json:"cancellation_requested"`
+	PaymentMethod         string                  `json:"payment_method"`
+	PaymentStatus         string                  `json:"payment_status"`
+	Currency              string                  `json:"currency"`
+	SubtotalMinor         int64                   `json:"subtotal_minor"`
+	CreatedAt             time.Time               `json:"created_at"`
+	UpdatedAt             time.Time               `json:"updated_at"`
+	Items                 []itemDTO               `json:"items"`
 }
 type itemDTO struct {
 	ID              int64  `json:"id"`
@@ -82,7 +86,12 @@ type itemDTO struct {
 
 func toDTO(order domain.Order) orderDTO {
 	s := order.Snapshot()
-	result := orderDTO{s.FulfillmentType, s.DeliveryAddress, s.PickupAddress, s.DeliveryFeeMinor, s.ID, s.CustomerID, s.RestaurantID, s.Status, s.CourierID, s.CancellationRequested, s.PaymentMethod, s.PaymentStatus, s.Currency, s.SubtotalMinor, s.CreatedAt.UTC(), s.UpdatedAt.UTC(), make([]itemDTO, 0, len(s.Items))}
+	var latitude, longitude *float64
+	if s.DeliveryLocation != nil {
+		latitude = &s.DeliveryLocation.Latitude
+		longitude = &s.DeliveryLocation.Longitude
+	}
+	result := orderDTO{latitude, longitude, s.PricingSnapshot, s.TotalMinor, s.FulfillmentType, s.DeliveryAddress, s.PickupAddress, s.DeliveryFeeMinor, s.ID, s.CustomerID, s.RestaurantID, s.Status, s.CourierID, s.CancellationRequested, s.PaymentMethod, s.PaymentStatus, s.Currency, s.SubtotalMinor, s.CreatedAt.UTC(), s.UpdatedAt.UTC(), make([]itemDTO, 0, len(s.Items))}
 	for _, p := range s.Items {
 		result.Items = append(result.Items, itemDTO{p.ID, p.OrderID, p.MenuItemID, p.Name, p.Quantity, p.UnitPriceMinor, p.TotalPriceMinor})
 	}
@@ -175,6 +184,9 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
+		ExpectedTotalMinor    *int64                      `json:"expected_total_minor"`
+		DeliveryLatitude      *float64                    `json:"delivery_latitude"`
+		DeliveryLongitude     *float64                    `json:"delivery_longitude"`
 		FulfillmentType       domain.FulfillmentType      `json:"fulfillment_type"`
 		DeliveryAddress       string                      `json:"delivery_address"`
 		RestaurantID          int64                       `json:"restaurant_id"`
@@ -193,7 +205,7 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 	if input.Currency == "" {
 		input.Currency = domain.CurrencyTJS
 	}
-	order, err := h.orders.CreateOrder(r.Context(), application.CreateCommand{FulfillmentType: input.FulfillmentType, DeliveryAddress: input.DeliveryAddress, CustomerID: customer, RestaurantID: input.RestaurantID, Currency: input.Currency, ExpectedSubtotalMinor: input.ExpectedSubtotalMinor, Items: input.Items}, keys[0])
+	order, err := h.orders.CreateOrder(r.Context(), application.CreateCommand{ExpectedTotalMinor: input.ExpectedTotalMinor, DeliveryLatitude: input.DeliveryLatitude, DeliveryLongitude: input.DeliveryLongitude, FulfillmentType: input.FulfillmentType, DeliveryAddress: input.DeliveryAddress, CustomerID: customer, RestaurantID: input.RestaurantID, Currency: input.Currency, ExpectedSubtotalMinor: input.ExpectedSubtotalMinor, Items: input.Items}, keys[0])
 	if err != nil {
 		h.handleError(w, err)
 		return
@@ -245,13 +257,22 @@ func (h *handler) cancel(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, 200, toDTO(order))
 }
 func (h *handler) handleError(w http.ResponseWriter, err error) {
+	var changed *application.PriceChangedError
+	if errors.As(err, &changed) {
+		h.writeJSON(w, 409, struct {
+			Error   string                         `json:"error"`
+			Code    string                         `json:"code"`
+			Current *application.PriceChangedError `json:"current_quote"`
+		}{changed.Error(), "price_changed", changed})
+		return
+	}
 	for _, entry := range []struct {
 		err    error
 		status int
 	}{
 		{application.ErrPickupCode, 403}, {application.ErrPickupRateLimited, 429}, {domain.ErrPaymentMismatch, 409}, {application.ErrInvalidKey, 400}, {application.ErrInvalidRequest, 400}, {domain.ErrInvalidOrder, 400}, {domain.ErrInvalidItem, 400}, {domain.ErrRestaurantMismatch, 400}, {domain.ErrOverflow, 400},
 		{application.ErrForbidden, 403}, {domain.ErrSagaTransition, 409}, {domain.ErrInvalidTransition, 409}, {domain.ErrNotFound, 404}, {application.ErrRestaurantNotFound, 404}, {application.ErrItemNotFound, 404},
-		{application.ErrPriceChanged, 409}, {application.ErrIdempotencyConflict, 409}, {domain.ErrCannotCancel, 409}, {application.ErrRestaurantUnavailable, 409}, {application.ErrItemUnavailable, 409}, {application.ErrItemRestaurantMismatch, 409},
+		{application.ErrFulfillmentUnavailable, 409}, {application.ErrPriceChanged, 409}, {application.ErrIdempotencyConflict, 409}, {domain.ErrCannotCancel, 409}, {application.ErrRestaurantUnavailable, 409}, {application.ErrItemUnavailable, 409}, {application.ErrItemRestaurantMismatch, 409},
 		{application.ErrCatalogUnavailable, 503},
 	} {
 		if errors.Is(err, entry.err) {

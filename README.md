@@ -433,11 +433,15 @@ curl -sS -X POST http://localhost:8080/restaurants/1/categories -H 'X-Dev-User-I
 curl -sS -X POST http://localhost:8080/restaurants/1/items -H 'X-Dev-User-ID: 1' \
   -H 'Content-Type: application/json' \
   -d '{"category_id":1,"name":"Плов","description":"","price_minor":6500,"currency":"TJS","is_available":true}'
+# До оформления явно настройте координаты, DELIVERY и тариф (см. docs/pricing.md).
+curl -X PATCH http://localhost:8080/restaurants/1 -H 'Content-Type: application/json' -H 'X-Dev-User-ID: 1' -d '{"latitude":38.56,"longitude":68.77}'
+curl -X PUT http://localhost:8080/restaurants/1/delivery-settings -H 'Content-Type: application/json' -H 'X-Dev-User-ID: 1' -d '{"delivery_enabled":true,"pickup_enabled":true,"minimum_delivery_subtotal_minor":0}'
+curl -X POST http://localhost:8080/restaurants/1/delivery-tariffs -H 'Content-Type: application/json' -H 'X-Dev-User-ID: 1' -d '{"max_distance_meters":2000,"delivery_fee_minor":1000}'
 # Подставьте menu_item_id из ответа (на свежей базе — 1).
 curl -i -X POST http://localhost:8081/orders \
   -H 'Content-Type: application/json' \
   -H 'X-Dev-Customer-ID: 7' -H 'Idempotency-Key: order-demo-1' \
-  -d '{"restaurant_id":1,"fulfillment_type":"DELIVERY","delivery_address":"Душанбе, улица 1","currency":"TJS","expected_subtotal_minor":13000,"items":[{"menu_item_id":1,"quantity":2}]}'
+  -d '{"restaurant_id":1,"fulfillment_type":"DELIVERY","delivery_address":"Душанбе, улица 1","currency":"TJS","delivery_latitude":38.56,"delivery_longitude":68.77,"expected_total_minor":14000,"items":[{"menu_item_id":1,"quantity":2}]}'
 curl -i http://localhost:8081/orders/1 -H 'X-Dev-Customer-ID: 7'
 curl -i -X POST http://localhost:8081/orders/1/cancel -H 'X-Dev-Customer-ID: 7'
 curl -i http://localhost:8081/health
@@ -446,7 +450,7 @@ curl -i http://localhost:8081/ready
 
 Создание возвращает 201 + Location и объект с id, customer_id, restaurant_id,
 status=WAITING_RESTAURANT, fulfillment_type, payment_method (POS_ON_DELIVERY либо
-POS_AT_PICKUP), payment_status=UNPAID, delivery_fee_minor=0, снимки адресов,
+POS_AT_PICKUP), payment_status=UNPAID, серверный delivery_fee_minor, total_minor, pricing_snapshot, снимки адресов,
 currency, subtotal_minor, created_at, updated_at, items.
 Каждая позиция содержит id, order_id, menu_item_id, name, quantity,
 unit_price_minor и total_price_minor. `subtotal_minor=13000` — **стоимость блюд**
@@ -470,7 +474,8 @@ unit_price_minor и total_price_minor. `subtotal_minor=13000` — **стоимо
 сумма, ресторан закрыт, блюдо недоступно/чужое, ключ уже использован для другого
 запроса, повторная отмена. 503 — временный отказ/timeout/неверный ответ Catalog.
 405/413/415/500/504 — как у Catalog. Цены и CustomerID из JSON отклоняются как
-неизвестные поля. expected_subtotal_minor обязателен и должен быть положительным.
+неизвестные поля. expected_total_minor обязателен и должен быть положительным.
+Для DELIVERY обязательны delivery_latitude и delivery_longitude.
 При 409 цены клиент обновляет меню, подтверждает актуальную сумму и отправляет
 новый запрос с новым ключом. Ошибки не закрепляют ключ, успешные ответы закрепляют.
 
@@ -483,7 +488,11 @@ unit_price_minor и total_price_minor. `subtotal_minor=13000` — **стоимо
 ### Внутренний quote API
 
 Вызов идёт **Orders → Catalog**, Catalog возвращает снимок. Единственный batch
-POST /internal/v1/menu/quote принимает restaurant_id и items[{menu_item_id,quantity}].
+POST /internal/v2/menu/quote принимает restaurant_id, fulfillment_type,
+items[{menu_item_id,quantity}], для DELIVERY — delivery_location{latitude,longitude}.
+Возвращает также items_subtotal_minor, delivery_fee_minor, total_minor,
+delivery_available, unavailable_reason, distance_meters и pricing_snapshot.
+V1 сохранён для переходного deployment.
 Возвращает restaurant_id, currency=TJS и items с menu_item_id, restaurant_id, name,
 quantity, unit_price_minor, currency. Бизнес-ошибки имеют `error` и дополнительный
 машинный `code`: restaurant_not_found/item_not_found (404),
@@ -525,7 +534,7 @@ HTTP DTO и ошибки, реальный HTTP Catalog adapter, атомарн�
 конкурентное создание/отмена, CHECK/FK, изменение цены и снимки, replay после
 перезапуска/отказа Catalog, изоляция пользователей и up/down/up миграции Orders.
 Для Orders schema_migrations независима от Catalog; текущая миграция Orders —
-000006, Catalog — 000003, Notifications — 000005, Delivery — 000004. Миграции не применяются из Go-приложения.
+000008, Catalog — 000005, Notifications — 000005, Delivery — 000008. Миграции не применяются из Go-приложения.
 
 Подробные объяснения Aggregate Root, собственного хранилища, транзакций,
 идемпотентности, направлений зависимостей и схема последовательности:
@@ -715,3 +724,17 @@ retry/resume. Компенсация — идемпотентная Kafka-ком
 ```
 
 GitHub Actions запускает эти же проверки на Pull Request и push в main.
+
+
+### Delivery Zones & Pricing — этап 13
+
+Catalog владеет настройками DELIVERY/PICKUP, минимумом блюд и радиальными тарифами.
+Orders сверяет `expected_total_minor` с private quote v2 и сохраняет неизменяемые
+`subtotal_minor + delivery_fee_minor = total_minor`. Delivery взыскивает полную
+сумму через физический POS; PICKUP сохраняет нулевую стоимость доставки.
+Исторические суммы/ответы не пересчитываются, DELIVERY ресторанов включается явно.
+
+[API, запуск, Haversine, ограничения и deployment](docs/pricing.md) ·
+[ADR 0010](docs/adr/0010-delivery-zones-and-pricing.md).
+Миграции: Catalog 000005, Orders 000008, Delivery 000008.
+Дополнительный E2E: `python3 scripts/verify-pricing.py`.

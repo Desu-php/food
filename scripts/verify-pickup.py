@@ -24,9 +24,10 @@ def main():
                                        headers={"Content-Type": "application/json", "X-Dev-User-ID": "1"})
         with urllib.request.urlopen(patch, timeout=10) as response:
             assert response.status == 200
+        f.events.configure_delivery()
         category = request(28080, "/restaurants/1/categories", {"name": "Pickup", "sort_order": 0})
         item = request(28080, "/restaurants/1/items", {"category_id": category["id"], "name": "Pickup dish", "price_minor": 6500, "currency": "TJS", "is_available": True})
-        body = {"restaurant_id": 1, "fulfillment_type": "PICKUP", "expected_subtotal_minor": 13000,
+        body = {"restaurant_id": 1, "fulfillment_type": "PICKUP", "expected_total_minor": 13000,
                 "items": [{"menu_item_id": item["id"], "quantity": 2}]}
         headers = {**customer, "Idempotency-Key": "pickup-e2e"}
         created = request(28081, "/orders", body, headers)
@@ -65,7 +66,7 @@ def main():
         assert sql("postgres", "delivery", "delivery_service", f"SELECT count(*) FROM deliveries WHERE order_id={oid}") == "0"
         assert code not in compose("logs", "--no-color", "orders", "outbox", "notifications", "delivery-consumer", capture=True)
         # Delivery still passes through the existing Saga and collects courier POS.
-        delivery_body = {**body, "fulfillment_type": "DELIVERY", "delivery_address": "Customer location"}
+        delivery_body = {**body, "fulfillment_type": "DELIVERY", "delivery_latitude": 38.56, "delivery_longitude": 68.77, "delivery_address": "Customer location"}
         dorder = request(28081, "/orders", delivery_body, {**customer, "Idempotency-Key": "delivery-with-pickup"})
         did, dbase = dorder["id"], f"/restaurants/1/orders/{dorder['id']}"
         action(28081, dbase + "/accept", manager)

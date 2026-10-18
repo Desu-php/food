@@ -58,7 +58,7 @@ func (f *Fulfillment) command(ctx context.Context, o domain.Order, s *domain.Sag
 		fulfillmentType = string(v.FulfillmentType)
 		customerID = v.CustomerID
 	}
-	return commands.Command{MessageID: s.CommandID, CommandType: kind, CorrelationID: id, AggregateID: v.ID, AggregateVersion: s.CommandSequence, SchemaVersion: 1, OccurredAt: now.UTC(), Payload: commands.Payload{CustomerID: customerID, RestaurantLocation: v.RestaurantLocation, DispatchDeadline: s.DispatchDeadline, FulfillmentType: fulfillmentType, DeliveryAddress: v.DeliveryAddress, OrderID: v.ID, OrderVersion: v.Version, AmountToCollectMinor: v.SubtotalMinor, Currency: v.Currency}}
+	return commands.Command{MessageID: s.CommandID, CommandType: kind, CorrelationID: id, AggregateID: v.ID, AggregateVersion: s.CommandSequence, SchemaVersion: 1, OccurredAt: now.UTC(), Payload: commands.Payload{CustomerID: customerID, RestaurantLocation: v.RestaurantLocation, DispatchDeadline: s.DispatchDeadline, FulfillmentType: fulfillmentType, DeliveryAddress: v.DeliveryAddress, OrderID: v.ID, OrderVersion: v.Version, DeliveryLocation: v.DeliveryLocation, AmountToCollectMinor: v.AmountToCollect(), Currency: v.Currency}}
 }
 func (f *Fulfillment) Accept(ctx context.Context, o *domain.Order, s *domain.Saga, now time.Time) (FulfillmentChange, error) {
 	if o.Snapshot().FulfillmentType == domain.Pickup {
@@ -285,7 +285,7 @@ func (f *Fulfillment) HandleDelivery(ctx context.Context, o *domain.Order, s *do
 	if o.Snapshot().FulfillmentType != domain.Delivery {
 		return FulfillmentChange{}, domain.ErrInvalidTransition
 	}
-	if e.Payload.AmountToCollectMinor != o.Snapshot().SubtotalMinor || e.Payload.Currency != o.Snapshot().Currency {
+	if e.Payload.AmountToCollectMinor != o.Snapshot().AmountToCollect() || e.Payload.Currency != o.Snapshot().Currency {
 		return FulfillmentChange{}, domain.ErrPaymentMismatch
 	}
 	if s.Terminal() {

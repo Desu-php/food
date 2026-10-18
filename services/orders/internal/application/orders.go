@@ -16,10 +16,11 @@ import (
 )
 
 var (
+	ErrFulfillmentUnavailable = errors.New("selected fulfillment is unavailable; obtain a current quote")
 	ErrInvalidRequest         = errors.New("invalid order request")
 	ErrInvalidKey             = errors.New("Idempotency-Key must contain 1 to 128 printable ASCII characters without spaces")
 	ErrIdempotencyConflict    = errors.New("Idempotency-Key was already used for a different request")
-	ErrPriceChanged           = errors.New("menu subtotal changed; review current prices and confirm with a new request")
+	ErrPriceChanged           = errors.New("order total changed; obtain a current quote and confirm expected_total_minor")
 	ErrCatalogUnavailable     = errors.New("catalog temporarily unavailable")
 	ErrRestaurantNotFound     = errors.New("restaurant not found")
 	ErrItemNotFound           = errors.New("menu item not found")
@@ -27,6 +28,16 @@ var (
 	ErrItemUnavailable        = errors.New("menu item unavailable")
 	ErrItemRestaurantMismatch = errors.New("menu item belongs to another restaurant")
 )
+
+type PriceChangedError struct {
+	ItemsSubtotalMinor int64  `json:"items_subtotal_minor"`
+	DeliveryFeeMinor   int64  `json:"delivery_fee_minor"`
+	TotalMinor         int64  `json:"total_minor"`
+	Currency           string `json:"currency"`
+}
+
+func (e *PriceChangedError) Error() string        { return ErrPriceChanged.Error() }
+func (e *PriceChangedError) Is(target error) bool { return target == ErrPriceChanged }
 
 type RequestedItem struct {
 	MenuItemID int64 `json:"menu_item_id"`
@@ -41,16 +52,29 @@ type CreateCommand struct {
 	Currency              string
 	ExpectedSubtotalMinor int64
 	Items                 []RequestedItem
+	ExpectedTotalMinor    *int64   `json:",omitempty"`
+	DeliveryLatitude      *float64 `json:",omitempty"`
+	DeliveryLongitude     *float64 `json:",omitempty"`
 }
 
+type QuoteOptions struct {
+	FulfillmentType  domain.FulfillmentType `json:"fulfillment_type"`
+	DeliveryLocation *geo.Point             `json:"delivery_location,omitempty"`
+}
 type CatalogQuote struct {
+	ItemsSubtotalMinor int64
+	DeliveryFeeMinor   int64
+	TotalMinor         int64
+	DeliveryAvailable  bool
+	UnavailableReason  string
+	PricingSnapshot    *domain.PricingSnapshot
 	RestaurantLocation *geo.Point
 	Items              []domain.PricedItem
 	PickupAddress      string
 }
 
 type CatalogClient interface {
-	Quote(context.Context, int64, []RequestedItem) (CatalogQuote, error)
+	Quote(context.Context, int64, []RequestedItem, ...QuoteOptions) (CatalogQuote, error)
 }
 
 // OrderRepository owns atomic persistence operations. Create must recheck the
@@ -90,7 +114,10 @@ func fingerprint(c CreateCommand, key string, legacyReplay bool) (CreateCommand,
 	if !legacyReplay && (c.FulfillmentType != domain.Delivery && c.FulfillmentType != domain.Pickup || c.FulfillmentType == domain.Delivery && !domain.ValidAddress(c.DeliveryAddress) || c.FulfillmentType == domain.Pickup && c.DeliveryAddress != "") {
 		return c, "", ErrInvalidRequest
 	}
-	if c.CustomerID <= 0 || c.RestaurantID <= 0 || c.Currency != domain.CurrencyTJS || c.ExpectedSubtotalMinor <= 0 || len(c.Items) == 0 || len(c.Items) > domain.MaxItems {
+	if c.CustomerID <= 0 || c.RestaurantID <= 0 || c.Currency != domain.CurrencyTJS || (c.ExpectedTotalMinor == nil && c.ExpectedSubtotalMinor <= 0 || c.ExpectedTotalMinor != nil && *c.ExpectedTotalMinor <= 0) || len(c.Items) == 0 || len(c.Items) > domain.MaxItems {
+		return c, "", ErrInvalidRequest
+	}
+	if (c.DeliveryLatitude == nil) != (c.DeliveryLongitude == nil) || c.DeliveryLatitude != nil && !(geo.Point{Latitude: *c.DeliveryLatitude, Longitude: *c.DeliveryLongitude}).Valid() {
 		return c, "", ErrInvalidRequest
 	}
 	c.Items = slices.Clone(c.Items)
@@ -123,12 +150,30 @@ func (s *Orders) CreateOrder(ctx context.Context, c CreateCommand, key string) (
 		}
 		return previous, err
 	}
-	if legacyReplay {
+	if legacyReplay || c.ExpectedTotalMinor == nil {
+		return domain.Order{}, ErrInvalidRequest
+	}
+	var deliveryLocation *geo.Point
+	if c.FulfillmentType == domain.Delivery {
+		if c.DeliveryLatitude == nil || c.DeliveryLongitude == nil {
+			return domain.Order{}, ErrInvalidRequest
+		}
+		deliveryLocation = &geo.Point{Latitude: *c.DeliveryLatitude, Longitude: *c.DeliveryLongitude}
+		if !deliveryLocation.Valid() {
+			return domain.Order{}, ErrInvalidRequest
+		}
+	} else if c.DeliveryLatitude != nil || c.DeliveryLongitude != nil {
 		return domain.Order{}, ErrInvalidRequest
 	}
 	// No database transaction is open while waiting for Catalog.
-	quote, err := s.catalog.Quote(ctx, c.RestaurantID, c.Items)
+	quote, err := s.catalog.Quote(ctx, c.RestaurantID, c.Items, QuoteOptions{FulfillmentType: c.FulfillmentType, DeliveryLocation: deliveryLocation})
 	quoted := quote.Items
+	if err == nil && !quote.DeliveryAvailable {
+		err = ErrFulfillmentUnavailable
+	}
+	if err == nil && quote.PricingSnapshot == nil {
+		err = ErrCatalogUnavailable
+	}
 	if err == nil {
 		if len(quoted) != len(c.Items) {
 			err = ErrCatalogUnavailable
@@ -159,10 +204,13 @@ func (s *Orders) CreateOrder(ctx context.Context, c CreateCommand, key string) (
 		}
 	}
 	if err == nil {
-		order, err = domain.NewOrder(c.CustomerID, c.RestaurantID, c.Currency, quoted, time.Now(), domain.Fulfillment{RestaurantLocation: locationSnapshot, Type: c.FulfillmentType, DeliveryAddress: c.DeliveryAddress, PickupAddress: location})
+		order, err = domain.NewOrder(c.CustomerID, c.RestaurantID, c.Currency, quoted, time.Now(), domain.Fulfillment{DeliveryLocation: deliveryLocation, DeliveryFeeMinor: quote.DeliveryFeeMinor, PricingSnapshot: quote.PricingSnapshot, RestaurantLocation: locationSnapshot, Type: c.FulfillmentType, DeliveryAddress: c.DeliveryAddress, PickupAddress: location})
 	}
-	if err == nil && order.Snapshot().SubtotalMinor != c.ExpectedSubtotalMinor {
-		err = ErrPriceChanged
+	if err == nil && (order.Snapshot().SubtotalMinor != quote.ItemsSubtotalMinor || order.Snapshot().TotalMinor != quote.TotalMinor) {
+		err = ErrCatalogUnavailable
+	}
+	if err == nil && order.Snapshot().TotalMinor != *c.ExpectedTotalMinor {
+		err = &PriceChangedError{ItemsSubtotalMinor: quote.ItemsSubtotalMinor, DeliveryFeeMinor: quote.DeliveryFeeMinor, TotalMinor: quote.TotalMinor, Currency: c.Currency}
 	}
 	if err != nil {
 		// A concurrent request may have succeeded while this request was quoting.

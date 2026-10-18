@@ -35,15 +35,22 @@ func NewClient(baseURL string, timeout time.Duration) (*Client, error) {
 	return &Client{baseURL: strings.TrimRight(baseURL, "/"), http: &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
 func (c *Client) Close() { c.http.CloseIdleConnections() }
-func (c *Client) Quote(ctx context.Context, restaurantID int64, items []application.RequestedItem) (application.CatalogQuote, error) {
+func (c *Client) Quote(ctx context.Context, restaurantID int64, items []application.RequestedItem, options ...application.QuoteOptions) (application.CatalogQuote, error) {
+	var opt application.QuoteOptions
+	path := "/internal/v1/menu/quote"
+	if len(options) > 0 {
+		opt = options[0]
+		path = "/internal/v2/menu/quote"
+	}
 	body, err := json.Marshal(struct {
+		application.QuoteOptions
 		RestaurantID int64                       `json:"restaurant_id"`
 		Items        []application.RequestedItem `json:"items"`
-	}{restaurantID, items})
+	}{opt, restaurantID, items})
 	if err != nil {
 		return application.CatalogQuote{}, fmt.Errorf("encode catalog quote: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/internal/v1/menu/quote", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(body))
 	if err != nil {
 		return application.CatalogQuote{}, fmt.Errorf("build catalog quote: %w", err)
 	}
@@ -70,6 +77,8 @@ func (c *Client) Quote(ctx context.Context, restaurantID int64, items []applicat
 			err    error
 		}{
 			{"restaurant_not_found", 404, application.ErrRestaurantNotFound},
+			{"amount_overflow", 400, domain.ErrOverflow},
+			{"invalid_coordinates", 400, application.ErrInvalidRequest},
 			{"item_not_found", 404, application.ErrItemNotFound},
 			{"restaurant_unavailable", 409, application.ErrRestaurantUnavailable},
 			{"item_unavailable", 409, application.ErrItemUnavailable},
@@ -82,10 +91,16 @@ func (c *Client) Quote(ctx context.Context, restaurantID int64, items []applicat
 		return application.CatalogQuote{}, application.ErrCatalogUnavailable
 	}
 	var quote struct {
-		RestaurantLocation *geo.Point `json:"restaurant_location"`
-		PickupAddress      string     `json:"pickup_address"`
-		RestaurantID       int64      `json:"restaurant_id"`
-		Currency           string     `json:"currency"`
+		ItemsSubtotalMinor int64                   `json:"items_subtotal_minor"`
+		DeliveryFeeMinor   int64                   `json:"delivery_fee_minor"`
+		TotalMinor         int64                   `json:"total_minor"`
+		DeliveryAvailable  bool                    `json:"delivery_available"`
+		UnavailableReason  string                  `json:"unavailable_reason"`
+		PricingSnapshot    *domain.PricingSnapshot `json:"pricing_snapshot"`
+		RestaurantLocation *geo.Point              `json:"restaurant_location"`
+		PickupAddress      string                  `json:"pickup_address"`
+		RestaurantID       int64                   `json:"restaurant_id"`
+		Currency           string                  `json:"currency"`
 		Items              []struct {
 			MenuItemID     int64  `json:"menu_item_id"`
 			RestaurantID   int64  `json:"restaurant_id"`
@@ -101,6 +116,11 @@ func (c *Client) Quote(ctx context.Context, restaurantID int64, items []applicat
 	if quote.RestaurantLocation != nil && !quote.RestaurantLocation.Valid() {
 		return application.CatalogQuote{}, application.ErrCatalogUnavailable
 	}
+	if len(options) > 0 {
+		if quote.PricingSnapshot == nil || quote.PricingSnapshot.SettingsVersion <= 0 || quote.ItemsSubtotalMinor <= 0 || quote.DeliveryFeeMinor < 0 || quote.TotalMinor < quote.ItemsSubtotalMinor || quote.TotalMinor-quote.ItemsSubtotalMinor != quote.DeliveryFeeMinor || quote.PricingSnapshot.DeliveryFeeMinor != quote.DeliveryFeeMinor || !quote.DeliveryAvailable && quote.UnavailableReason == "" {
+			return application.CatalogQuote{}, application.ErrCatalogUnavailable
+		}
+	}
 	result := make([]domain.PricedItem, 0, len(quote.Items))
 	expected := make(map[int64]int64, len(items))
 	for _, p := range items {
@@ -114,5 +134,5 @@ func (c *Client) Quote(ctx context.Context, restaurantID int64, items []applicat
 		delete(expected, p.MenuItemID)
 		result = append(result, domain.PricedItem{MenuItemID: p.MenuItemID, RestaurantID: p.RestaurantID, Name: p.Name, Quantity: p.Quantity, UnitPriceMinor: p.UnitPriceMinor, Currency: p.Currency})
 	}
-	return application.CatalogQuote{RestaurantLocation: quote.RestaurantLocation, Items: result, PickupAddress: quote.PickupAddress}, nil
+	return application.CatalogQuote{ItemsSubtotalMinor: quote.ItemsSubtotalMinor, DeliveryFeeMinor: quote.DeliveryFeeMinor, TotalMinor: quote.TotalMinor, DeliveryAvailable: quote.DeliveryAvailable, UnavailableReason: quote.UnavailableReason, PricingSnapshot: quote.PricingSnapshot, RestaurantLocation: quote.RestaurantLocation, Items: result, PickupAddress: quote.PickupAddress}, nil
 }

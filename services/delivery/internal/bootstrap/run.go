@@ -18,7 +18,7 @@ import (
 	"github.com/Desu-php/food/services/delivery/internal/application"
 )
 
-const schemaCheck = "SELECT r.customer_id,o.expires_at,d.latitude,d.longitude,d.dispatch_deadline,d.dispatch_attempts,d.id,d.order_id,d.version,d.order_version,d.ready,c.id,c.updated_at,d.preparation_started,p.delivery_id,p.id,e.event_id,i.event_id FROM deliveries d LEFT JOIN delivery_requests r ON r.order_id=d.order_id LEFT JOIN couriers c ON c.id=d.courier_id LEFT JOIN payment_confirmations p ON p.delivery_id=d.id LEFT JOIN outbox_events e ON e.aggregate_id=d.id LEFT JOIN processed_events i ON false LEFT JOIN courier_offers o ON o.delivery_id=d.id LIMIT 0"
+const schemaCheck = "SELECT d.delivery_latitude,d.delivery_longitude,r.customer_id,o.expires_at,d.latitude,d.longitude,d.dispatch_deadline,d.dispatch_attempts,d.id,d.order_id,d.version,d.order_version,d.ready,c.id,c.updated_at,d.preparation_started,p.delivery_id,p.id,e.event_id,i.event_id FROM deliveries d LEFT JOIN delivery_requests r ON r.order_id=d.order_id LEFT JOIN couriers c ON c.id=d.courier_id LEFT JOIN payment_confirmations p ON p.delivery_id=d.id LEFT JOIN outbox_events e ON e.aggregate_id=d.id LEFT JOIN processed_events i ON false LEFT JOIN courier_offers o ON o.delivery_id=d.id LIMIT 0"
 
 func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 	cfg.DevAuthEnabled = cfg.Authentication.DevEnabled

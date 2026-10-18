@@ -52,6 +52,13 @@ func TestDeliverySagaMigrationKeepsLegacyPOS(t *testing.T) {
 	if _, err = pool.Exec(ctx, string(offerSQL)); err != nil {
 		t.Fatal(err)
 	}
+	coordinatesSQL, err := os.ReadFile("../../../migrations/000008_delivery_coordinates.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, string(coordinatesSQL)); err != nil {
+		t.Fatal(err)
+	}
 	var offers int
 	if err = pool.QueryRow(ctx, `SELECT count(*) FROM courier_offers`).Scan(&offers); err != nil || offers != 0 {
 		t.Fatal("historical assignments invented offers", offers, err)

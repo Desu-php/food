@@ -50,7 +50,7 @@ curl -i -X PATCH http://localhost:8080/restaurants/1 \
 curl -i -X POST http://localhost:8081/orders \
   -H 'Content-Type: application/json' \
   -H 'X-Dev-Customer-ID: 7' -H 'Idempotency-Key: pickup-demo-1' \
-  -d '{"restaurant_id":1,"fulfillment_type":"PICKUP","expected_subtotal_minor":13000,"items":[{"menu_item_id":100,"quantity":2}]}'
+  -d '{"restaurant_id":1,"fulfillment_type":"PICKUP","expected_total_minor":13000,"items":[{"menu_item_id":100,"quantity":2}]}'
 ```
 
 201 + Location; `fulfillment_type=PICKUP`, `payment_method=POS_AT_PICKUP`,
@@ -59,9 +59,10 @@ curl -i -X POST http://localhost:8081/orders \
 запрещена. Клиентский pickup_address, payment fields и delivery_fee_minor запрещены.
 
 Для DELIVERY то же API требует `"fulfillment_type":"DELIVERY"` и непустой
-`"delivery_address":"адрес клиента"`. Он сохраняется в Order и задаче Delivery.
-Тариф доставки пока не реализован: сбор 0, POS-сумма равна сумме блюд; произвольной
-новой платы нет. Для PICKUP непустой delivery_address запрещён.
+`"delivery_address":"адрес клиента"`, delivery_latitude и delivery_longitude.
+Они сохраняются в Order и задаче Delivery.
+Для PICKUP сбор 0 и POS-сумма равна сумме блюд; для DELIVERY применяется
+[серверный тариф](pricing.md). Клиент не задаёт стоимость доставки. Для PICKUP непустой delivery_address запрещён.
 
 Idempotency-Key scoped по customer_id и учитывает fulfillment_type/адрес DELIVERY.
 Replay возвращает исходный результат создания, даже после выдачи, изменения меню,
@@ -169,3 +170,5 @@ python3 scripts/verify-saga.py
 
 Скрипты используют отдельные Compose-проекты и удаляют только их тестовые volumes.
 Они занимают одни и те же тестовые порты, поэтому запускайте их последовательно.
+
+Настройки доступности и тарифы этапа 13: [Delivery Zones & Pricing](pricing.md).

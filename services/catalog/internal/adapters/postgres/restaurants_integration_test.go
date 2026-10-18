@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -59,7 +60,7 @@ func integrationPool(t *testing.T, migrations ...string) *pgxpool.Pool {
 		migrations = append(migrations, "000003_restaurant_address")
 	}
 	if len(migrations) > 1 {
-		migrations = append(migrations, "000004_restaurant_geolocation")
+		migrations = append(migrations, "000004_restaurant_geolocation", "000005_pricing")
 	}
 	for _, migration := range migrations {
 		sql, err := os.ReadFile("../../../migrations/" + migration + ".up.sql")
@@ -87,7 +88,7 @@ func TestPostgresRestaurantRepository(t *testing.T) {
 		t.Fatalf("create: %+v %v", created, err)
 	}
 	got, err := repo.Get(ctx, created.ID)
-	if err != nil || got != created {
+	if err != nil || !reflect.DeepEqual(got, created) {
 		t.Fatalf("get: %+v %v", got, err)
 	}
 	closed := false
@@ -101,11 +102,11 @@ func TestPostgresRestaurantRepository(t *testing.T) {
 		t.Fatalf("rename: %+v %v", updated, err)
 	}
 	got, err = repo.Get(ctx, created.ID)
-	if err != nil || got != updated {
+	if err != nil || !reflect.DeepEqual(got, updated) {
 		t.Fatalf("persisted update: %+v %v", got, err)
 	}
 	rows, err = repo.List(ctx, application.Page{Limit: 1, Offset: 2})
-	if err != nil || len(rows) != 1 || rows[0] != updated {
+	if err != nil || len(rows) != 1 || !reflect.DeepEqual(rows[0], updated) {
 		t.Fatalf("page: %+v %v", rows, err)
 	}
 	rows, err = repo.List(ctx, application.Page{Limit: 20, Offset: 999})
@@ -198,6 +199,13 @@ func TestMigrationRollback(t *testing.T) {
 	pool := integrationPool(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	pricingDown, err := os.ReadFile("../../../migrations/000005_pricing.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, string(pricingDown)); err != nil {
+		t.Fatal(err)
+	}
 	sql, err := os.ReadFile("../../../migrations/000001_restaurants.down.sql")
 	if err != nil {
 		t.Fatal(err)

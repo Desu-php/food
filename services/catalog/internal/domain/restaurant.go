@@ -20,6 +20,8 @@ var (
 
 // Restaurant is a catalog entity. IDs and timestamps are assigned by persistence.
 type Restaurant struct {
+	Settings  DeliverySettings
+	Tariffs   []DeliveryTariff
 	Latitude  *float64
 	Longitude *float64
 	ID        int64

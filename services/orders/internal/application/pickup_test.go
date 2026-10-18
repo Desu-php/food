@@ -16,6 +16,8 @@ func TestPickupCreateAndIdempotency(t *testing.T) {
 	repo := &repositoryStub{}
 	c := command()
 	c.FulfillmentType = domain.Pickup
+	c.DeliveryLatitude = nil
+	c.DeliveryLongitude = nil
 	c.DeliveryAddress = ""
 	svc := NewOrders(repo, catalogFunc(func(context.Context, int64, []RequestedItem) ([]domain.PricedItem, error) {
 		return []domain.PricedItem{{MenuItemID: 1, RestaurantID: 1, Name: "Dish", Quantity: 2, UnitPriceMinor: 6500, Currency: "TJS"}}, nil
@@ -82,7 +84,13 @@ func TestPickupDoesNotStartOrCompensateSaga(t *testing.T) {
 	}
 }
 func TestCreateRequiresExplicitFulfillmentAndDeliveryAddress(t *testing.T) {
-	for _, c := range []CreateCommand{func() CreateCommand { c := command(); c.FulfillmentType = ""; return c }(), func() CreateCommand { c := command(); c.DeliveryAddress = ""; return c }(), func() CreateCommand { c := command(); c.FulfillmentType = domain.Pickup; return c }()} {
+	for _, c := range []CreateCommand{func() CreateCommand { c := command(); c.FulfillmentType = ""; return c }(), func() CreateCommand { c := command(); c.DeliveryAddress = ""; return c }(), func() CreateCommand {
+		c := command()
+		c.FulfillmentType = domain.Pickup
+		c.DeliveryLatitude = nil
+		c.DeliveryLongitude = nil
+		return c
+	}()} {
 		if _, _, err := fingerprint(c, "key", false); !errors.Is(err, ErrInvalidRequest) {
 			t.Fatal(err)
 		}
@@ -93,6 +101,9 @@ func TestHistoricalCreationReplayWithoutFulfillment(t *testing.T) {
 	ctx := context.Background()
 	c := command()
 	c.FulfillmentType = ""
+	c.ExpectedTotalMinor = nil
+	c.DeliveryLatitude = nil
+	c.DeliveryLongitude = nil
 	c.DeliveryAddress = ""
 	// This is the exact pre-extension JSON field layout used in persisted hashes.
 	original := `{"CustomerID":7,"RestaurantID":1,"Currency":"TJS","ExpectedSubtotalMinor":13000,"Items":[{"menu_item_id":1,"quantity":2}]}`
@@ -105,6 +116,7 @@ func TestHistoricalCreationReplayWithoutFulfillment(t *testing.T) {
 	}
 	state := current.Snapshot()
 	state.ID = 42
+	state.TotalMinor = 0
 	state.FulfillmentType = ""
 	state.DeliveryAddress = ""
 	state.Items[0].ID = 1

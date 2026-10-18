@@ -56,3 +56,28 @@ func TestHistoricalCanonicalEventAndPickupContract(t *testing.T) {
 		t.Fatal("delivery customer pickup event", err)
 	}
 }
+
+func TestPricingContractTotals(t *testing.T) {
+	e := Event{EventID: NewID(), EventType: OrderCreated, SchemaVersion: 1, AggregateID: 42, AggregateVersion: 1, CorrelationID: "pricing", OccurredAt: time.Now(), Payload: Payload{FulfillmentType: "DELIVERY", OrderID: 42, CustomerID: 7, RestaurantID: 1, SubtotalMinor: 13000, DeliveryFeeMinor: 1000, TotalMinor: 14000, Currency: "TJS"}}
+	body, err := json.Marshal(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := Decode(body)
+	if err != nil || decoded.Payload.AmountToCollect() != 14000 {
+		t.Fatal(decoded, err)
+	}
+	for _, change := range []func(*Payload){func(p *Payload) { p.TotalMinor = 13000 }, func(p *Payload) { p.DeliveryFeeMinor = -1 }, func(p *Payload) { p.TotalMinor = 0 }, func(p *Payload) { p.FulfillmentType = "PICKUP" }} {
+		bad := e
+		change(&bad.Payload)
+		if !errors.Is(bad.Validate(), ErrInvalid) {
+			t.Fatal(bad)
+		}
+	}
+	historical := e
+	historical.Payload.TotalMinor = 0
+	historical.Payload.DeliveryFeeMinor = 0
+	if historical.Validate() != nil || historical.Payload.AmountToCollect() != 13000 {
+		t.Fatal(historical)
+	}
+}

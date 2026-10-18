@@ -245,7 +245,7 @@ func TestPickupHTTPWithCatalog(t *testing.T) {
 			io.WriteString(w, `{"id":1,"address":"Restaurant-owned location"}`)
 			return
 		}
-		io.WriteString(w, `{"restaurant_id":1,"pickup_address":"Restaurant-owned location","currency":"TJS","items":[{"menu_item_id":100,"restaurant_id":1,"name":"Dish","quantity":2,"unit_price_minor":6500,"currency":"TJS"}]}`)
+		io.WriteString(w, `{"restaurant_id":1,"pickup_address":"Restaurant-owned location","currency":"TJS","delivery_available":true,"items_subtotal_minor":13000,"total_minor":13000,"pricing_snapshot":{"settings_version":1,"delivery_fee_minor":0},"items":[{"menu_item_id":100,"restaurant_id":1,"name":"Dish","quantity":2,"unit_price_minor":6500,"currency":"TJS"}]}`)
 	}))
 	defer catalogServer.Close()
 	client, err := catalog.NewClient(catalogServer.URL, time.Second)
@@ -269,7 +269,7 @@ func TestPickupHTTPWithCatalog(t *testing.T) {
 		h.ServeHTTP(w, req)
 		return w
 	}
-	body := `{"restaurant_id":1,"fulfillment_type":"PICKUP","expected_subtotal_minor":13000,"items":[{"menu_item_id":100,"quantity":2}]}`
+	body := `{"restaurant_id":1,"fulfillment_type":"PICKUP","expected_total_minor":13000,"items":[{"menu_item_id":100,"quantity":2}]}`
 	created := call("POST", "/orders", body, false, "7")
 	if created.Code != 201 {
 		t.Fatal(created.Code, created.Body)
@@ -376,6 +376,13 @@ func TestPickupMigrationPreservesHistoricalFactsAndGuardsDowngrade(t *testing.T)
 			t.Fatal("historical fact changed", key)
 		}
 	}
+	pricingDown, err := os.ReadFile("../../../migrations/000008_pricing.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, string(pricingDown)); err != nil {
+		t.Fatal(err)
+	}
 	down, err := os.ReadFile("../../../migrations/000005_pickup.down.sql")
 	if err != nil {
 		t.Fatal(err)
@@ -384,6 +391,13 @@ func TestPickupMigrationPreservesHistoricalFactsAndGuardsDowngrade(t *testing.T)
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, string(up)); err != nil {
+		t.Fatal(err)
+	}
+	pricingUp, err := os.ReadFile("../../../migrations/000008_pricing.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, string(pricingUp)); err != nil {
 		t.Fatal(err)
 	}
 	o := createPickup(t, NewOrders(pool), "no-downgrade")

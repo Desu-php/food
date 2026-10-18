@@ -48,12 +48,14 @@ type Event struct {
 
 // IDs retain the existing services' positive int64 representation.
 type Payload struct {
-	FulfillmentType string `json:"fulfillment_type,omitempty"`
-	OrderID         int64  `json:"order_id"`
-	CustomerID      int64  `json:"customer_id"`
-	RestaurantID    int64  `json:"restaurant_id"`
-	SubtotalMinor   int64  `json:"subtotal_minor"`
-	Currency        string `json:"currency"`
+	DeliveryFeeMinor int64  `json:"delivery_fee_minor,omitempty"`
+	TotalMinor       int64  `json:"total_minor,omitempty"`
+	FulfillmentType  string `json:"fulfillment_type,omitempty"`
+	OrderID          int64  `json:"order_id"`
+	CustomerID       int64  `json:"customer_id"`
+	RestaurantID     int64  `json:"restaurant_id"`
+	SubtotalMinor    int64  `json:"subtotal_minor"`
+	Currency         string `json:"currency"`
 }
 
 func NewID() string {
@@ -87,6 +89,9 @@ func (e Event) Validate() error {
 		return ErrUnsupported
 	}
 	p := e.Payload
+	if p.DeliveryFeeMinor < 0 || p.TotalMinor < 0 || p.TotalMinor != 0 && (p.TotalMinor < p.SubtotalMinor || p.TotalMinor-p.SubtotalMinor != p.DeliveryFeeMinor) || p.TotalMinor == 0 && p.DeliveryFeeMinor != 0 || p.FulfillmentType == "PICKUP" && p.DeliveryFeeMinor != 0 {
+		return ErrInvalid
+	}
 	if p.FulfillmentType != "" && p.FulfillmentType != "DELIVERY" && p.FulfillmentType != "PICKUP" || e.EventType == OrderPickedUpByCustomer && p.FulfillmentType != "PICKUP" {
 		return ErrInvalid
 	}
@@ -117,4 +122,12 @@ func KnownType(kind string) bool {
 		return true
 	}
 	return false
+}
+
+// AmountToCollect preserves the agreed value of historical zero-fee events.
+func (p Payload) AmountToCollect() int64 {
+	if p.TotalMinor == 0 {
+		return p.SubtotalMinor
+	}
+	return p.TotalMinor
 }

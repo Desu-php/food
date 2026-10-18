@@ -19,11 +19,12 @@ customer = {"X-Dev-Customer-ID": "7"}
 def main():
     try:
         compose("up", "--build", "-d", "--wait", "--wait-timeout", "240", "--scale", "outbox=2", "--scale", "delivery-outbox=2", "--scale", "orders-saga=2")
+        f.events.configure_delivery()
         category = request(28080, "/restaurants/1/categories", {"name": "Saga", "sort_order": 0})
         item = request(28080, "/restaurants/1/items", {"category_id": category["id"], "name": "Saga dish", "price_minor": 25000, "currency": "TJS", "is_available": True})
         courier = request(28085, "/couriers", {"name": "Saga courier"}, dispatcher)
         courier_headers = {"X-Dev-Courier-ID": str(courier["id"])}
-        body = {"restaurant_id": 1, "currency": "TJS", "fulfillment_type": "DELIVERY", "delivery_address": "Test delivery address", "expected_subtotal_minor": 25000,
+        body = {"restaurant_id": 1, "currency": "TJS", "fulfillment_type": "DELIVERY", "delivery_latitude": 38.56, "delivery_longitude": 68.77, "delivery_address": "Test delivery address", "expected_total_minor": 25000,
                 "items": [{"menu_item_id": item["id"], "quantity": 1}]}
 
         def create(key):

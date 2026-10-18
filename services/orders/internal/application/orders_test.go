@@ -6,14 +6,28 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Desu-php/food/contracts/geo"
 	"github.com/Desu-php/food/services/orders/internal/domain"
 )
 
 type catalogFunc func(context.Context, int64, []RequestedItem) ([]domain.PricedItem, error)
 
-func (f catalogFunc) Quote(ctx context.Context, id int64, p []RequestedItem) (CatalogQuote, error) {
+func (f catalogFunc) Quote(ctx context.Context, id int64, p []RequestedItem, options ...QuoteOptions) (CatalogQuote, error) {
 	items, err := f(ctx, id, p)
-	return CatalogQuote{Items: items, PickupAddress: "Restaurant location"}, err
+	var subtotal int64
+	for _, i := range items {
+		subtotal += i.UnitPriceMinor * i.Quantity
+	}
+	snap := &domain.PricingSnapshot{SettingsVersion: 1}
+	location := (*geo.Point)(nil)
+	if len(options) > 0 && options[0].FulfillmentType == domain.Delivery {
+		d := int64(0)
+		snap.TariffID = 1
+		snap.MaxDistanceMeters = 2000
+		snap.DistanceMeters = &d
+		location = &geo.Point{Latitude: 38.56, Longitude: 68.77}
+	}
+	return CatalogQuote{Items: items, PickupAddress: "Restaurant location", ItemsSubtotalMinor: subtotal, TotalMinor: subtotal, DeliveryAvailable: true, PricingSnapshot: snap, RestaurantLocation: location}, err
 }
 
 type repositoryStub struct {
@@ -45,7 +59,9 @@ func (r *repositoryStub) Cancel(_ context.Context, _ int64, _ int64, fn Fulfillm
 	return r.previous, err
 }
 func command() CreateCommand {
-	return CreateCommand{FulfillmentType: domain.Delivery, DeliveryAddress: "Test delivery address", CustomerID: 7, RestaurantID: 1, Currency: "TJS", ExpectedSubtotalMinor: 13000, Items: []RequestedItem{{MenuItemID: 1, Quantity: 2}}}
+	total := int64(13000)
+	lat, lon := 38.56, 68.77
+	return CreateCommand{ExpectedTotalMinor: &total, DeliveryLatitude: &lat, DeliveryLongitude: &lon, FulfillmentType: domain.Delivery, DeliveryAddress: "Test delivery address", CustomerID: 7, RestaurantID: 1, Currency: "TJS", ExpectedSubtotalMinor: 13000, Items: []RequestedItem{{MenuItemID: 1, Quantity: 2}}}
 }
 func TestCreateOrderReplayBeforeCatalog(t *testing.T) {
 	repo := &repositoryStub{}
@@ -91,6 +107,8 @@ func TestCreateOrderFailures(t *testing.T) {
 		t.Fatalf("price change: %v", err)
 	}
 	c := command()
+	total := int64(14000)
+	c.ExpectedTotalMinor = &total
 	c.ExpectedSubtotalMinor = 14000
 	o, err := svc.CreateOrder(context.Background(), c, "confirmed-price")
 	if err != nil || o.Snapshot().Items[0].Name != "New name" || o.Snapshot().Items[0].UnitPriceMinor != 7000 {

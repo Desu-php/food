@@ -16,5 +16,5 @@ func OrderEvent(ctx context.Context, s domain.State, kind string) events.Event {
 	}
 	return events.Event{EventID: events.NewID(), EventType: kind, SchemaVersion: 1,
 		AggregateID: s.ID, AggregateVersion: s.Version, CorrelationID: id, OccurredAt: s.UpdatedAt,
-		Payload: events.Payload{FulfillmentType: string(s.FulfillmentType), OrderID: s.ID, CustomerID: s.CustomerID, RestaurantID: s.RestaurantID, SubtotalMinor: s.SubtotalMinor, Currency: s.Currency}}
+		Payload: events.Payload{TotalMinor: s.TotalMinor, DeliveryFeeMinor: s.DeliveryFeeMinor, FulfillmentType: string(s.FulfillmentType), OrderID: s.ID, CustomerID: s.CustomerID, RestaurantID: s.RestaurantID, SubtotalMinor: s.SubtotalMinor, Currency: s.Currency}}
 }

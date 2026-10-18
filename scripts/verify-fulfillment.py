@@ -28,12 +28,13 @@ def action(port, path, headers, body=None, expected=200):
 def main():
     try:
         compose("up", "--build", "-d", "--wait", "--wait-timeout", "240", "--scale", "outbox=2", "--scale", "delivery-outbox=2", "--scale", "orders-saga=2")
+        events.configure_delivery()
         category = request(28080, "/restaurants/1/categories", {"name": "Fulfillment", "sort_order": 0})
         item = request(28080, "/restaurants/1/items", {"category_id": category["id"], "name": "Test dish", "price_minor": 25000, "currency": "TJS", "is_available": True})
         customer = {"X-Dev-Customer-ID": "7", "Idempotency-Key": "fulfillment-1"}
         manager = {"X-Dev-User-ID": "10"}
         dispatcher = {"X-Dev-User-ID": "20"}
-        body = {"restaurant_id": 1, "currency": "TJS", "fulfillment_type": "DELIVERY", "delivery_address": "Test delivery address", "expected_subtotal_minor": 25000, "items": [{"menu_item_id": item["id"], "quantity": 1}]}
+        body = {"restaurant_id": 1, "currency": "TJS", "fulfillment_type": "DELIVERY", "delivery_latitude": 38.56, "delivery_longitude": 68.77, "delivery_address": "Test delivery address", "expected_total_minor": 25000, "items": [{"menu_item_id": item["id"], "quantity": 1}]}
         order = request(28081, "/orders", body, customer)
         assert order["status"] == "WAITING_RESTAURANT" and order["payment_status"] == "UNPAID" and order["payment_method"] == "POS_ON_DELIVERY"
         base = f"/restaurants/1/orders/{order['id']}"

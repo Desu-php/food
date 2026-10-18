@@ -117,7 +117,7 @@ DeliveryCancelled. Приготовление в этом промежутке �
 ```bash
 curl -sS http://localhost:8081/orders -H 'X-Dev-Customer-ID: 7' \
   -H 'Idempotency-Key: saga-demo-1' -H 'Content-Type: application/json' \
-  -d '{"restaurant_id":1,"fulfillment_type":"DELIVERY","delivery_address":"Душанбе, улица 1","currency":"TJS","expected_subtotal_minor":25000,"items":[{"menu_item_id":1,"quantity":1}]}'
+  -d '{"restaurant_id":1,"fulfillment_type":"DELIVERY","delivery_latitude":38.56,"delivery_longitude":68.77,"delivery_address":"Душанбе, улица 1","currency":"TJS","expected_total_minor":25000,"items":[{"menu_item_id":1,"quantity":1}]}'
 # WAITING_RESTAURANT / POS_ON_DELIVERY / UNPAID
 curl -sS -X POST http://localhost:8081/restaurants/1/orders/1/accept -H 'X-Dev-User-ID: 10'
 curl -sS http://localhost:8081/restaurants/1/orders/1/saga -H 'X-Dev-User-ID: 10'
@@ -224,3 +224,5 @@ docker compose --env-file .env -f deploy/compose.yaml run --rm --no-deps deliver
 Не исправляйте соседнюю БД SQL UPDATE и не пропускайте offset ради продвижения
 partition. Исправьте причину, затем выполните replay/retry и перезапустите consumer.
 NEEDS_ATTENTION хранит причину; API/worker не скрывают её автоматической отменой.
+
+Настройки доступности и тарифы этапа 13: [Delivery Zones & Pricing](pricing.md).

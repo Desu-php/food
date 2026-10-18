@@ -38,6 +38,10 @@ def main():
                 "--scale", "delivery-outbox=2", "--scale", "orders-saga=2")
         send(28080, "/restaurants/1", "PATCH", {"X-Dev-User-ID": "1"},
              {"latitude": 38.56, "longitude": 68.77})
+        f.events.configure_delivery()
+        tariff = send(28080, "/restaurants/1/delivery-settings", "GET", manager)["tariffs"][0]
+        send(28080, f"/restaurants/1/delivery-tariffs/{tariff['id']}", "PUT", manager,
+             {"max_distance_meters": 8000, "delivery_fee_minor": 1000})
         category = request(28080, "/restaurants/1/categories", {"name": "Offers", "sort_order": 0})
         item = request(28080, "/restaurants/1/items", {"category_id": category["id"], "name": "Dish", "price_minor": 25000, "currency": "TJS", "is_available": True})
 
@@ -50,12 +54,13 @@ def main():
 
         c1, h1 = courier("Nearest", 38.56)
         c2, h2 = courier("Next", 38.561)
-        body = {"restaurant_id": 1, "currency": "TJS", "fulfillment_type": "DELIVERY",
-                "delivery_address": "Customer address", "expected_subtotal_minor": 25000,
+        body = {"restaurant_id": 1, "currency": "TJS", "fulfillment_type": "DELIVERY", "delivery_latitude": 38.56, "delivery_longitude": 68.77,
+                "delivery_address": "Customer address", "expected_total_minor": 26000,
                 "items": [{"menu_item_id": item["id"], "quantity": 1}]}
 
         def create(key):
             order = request(28081, "/orders", body, {**customer, "Idempotency-Key": key})
+            assert order["subtotal_minor"] == 25000 and order["delivery_fee_minor"] == 1000 and order["total_minor"] == 26000
             base = f"/restaurants/1/orders/{order['id']}"
             action(28081, base + "/accept", manager)
             return order["id"], base

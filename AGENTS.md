@@ -54,7 +54,7 @@ without implementing it.
 ## Current scope
 
 Production Foundation, Catalog, Orders, Notifications, Restaurant Order
-Fulfillment Saga orchestration, PICKUP and Delivery with operational POS collection, Security & Reliability Hardening, Automatic Courier Dispatch + Redis GEO, Courier Offer & Acceptance, Real-Time Courier Tracking. Future modules require
+Fulfillment Saga orchestration, PICKUP and Delivery with operational POS collection, Security & Reliability Hardening, Automatic Courier Dispatch + Redis GEO, Courier Offer & Acceptance, Real-Time Courier Tracking, Delivery Zones & Pricing. Future modules require
 separate tasks. The user's current explicit instructions take precedence over this file.
 
 ## MVP payment and fulfillment decision
@@ -254,3 +254,33 @@ No extra tracking service, maps, routes, ETA, GPS history or frontend.
 
 See docs/tracking.md and docs/adr/0009-real-time-courier-tracking.md.
 Run scripts/check.sh, scripts/test-integration.sh and scripts/verify-offers.py.
+
+
+## Stage 13: Delivery Zones & Pricing
+
+Catalog owns delivery/pickup settings, minimum DELIVERY food subtotal and radial
+DeliveryTariff tiers. Use one MVCC statement for the batch quote: menu, settings,
+coordinates, tariffs and pricing version. Haversine distance is rounded upward to
+integer meters; select the first maximum >= distance. Validate finite coordinates;
+never describe straight-line distance as road distance/ETA or geocode verification.
+Money stays int64 minor units (100 dirams per TJS); guard multiplication/addition.
+
+Orders requires expected_total_minor on new creations and paired customer delivery
+coordinates for DELIVERY. Preserve exact historical retries before calling Catalog;
+new requests with only expected_subtotal_minor are invalid. Persist immutable menu,
+pricing snapshot, subtotal, fee, total and locations. Do not reprice existing orders.
+Quote and Orders commit are separate snapshots, without distributed transactions.
+PICKUP ignores delivery minimum, has zero fee, and creates no Delivery/Saga.
+
+Delivery receives full subtotal + delivery fee through CreateDelivery, persists the
+customer's declared coordinates and retains atomic full POS confirmation/completion/
+Outbox. Orders completes through its transactional Inbox/Saga and compares total.
+REPORTED_COLLECTED remains operational. No online payment or Payment Service.
+
+Optional v1 fields use omitempty and preserve historical canonical fingerprints.
+Migrate first, upgrade all consumers before producers, then explicitly configure
+and enable restaurant DELIVERY. Historical fees stay zero; coordinates remain NULL;
+never rewrite stored idempotency JSON. Orders downgrade must refuse new pricing
+snapshots. See docs/pricing.md and docs/adr/0010-delivery-zones-and-pricing.md.
+Run scripts/check.sh, scripts/test-integration.sh, scripts/verify-pricing.py,
+scripts/verify-offers.py and scripts/verify-pickup.py. No commits without approval.

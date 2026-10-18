@@ -116,8 +116,13 @@ func (r *Repository) ProcessCommand(ctx context.Context, c commands.Command) err
 		latitude = &d.RestaurantLocation.Latitude
 		longitude = &d.RestaurantLocation.Longitude
 	}
+	var deliveryLatitude, deliveryLongitude *float64
+	if d.DeliveryLocation != nil {
+		deliveryLatitude = &d.DeliveryLocation.Latitude
+		deliveryLongitude = &d.DeliveryLocation.Longitude
+	}
 	if current == nil {
-		err = tx.QueryRow(ctx, `INSERT INTO deliveries(order_id,status,amount_to_collect_minor,currency,version,order_version,preparation_started,ready,created_at,updated_at,delivery_address,latitude,longitude,dispatch_deadline) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`, d.OrderID, d.Status, d.AmountToCollectMinor, d.Currency, d.Version, d.OrderVersion, d.PreparationStarted, d.Ready, d.CreatedAt, d.UpdatedAt, d.DeliveryAddress, latitude, longitude, d.DispatchDeadline).Scan(&d.ID)
+		err = tx.QueryRow(ctx, `INSERT INTO deliveries(order_id,status,amount_to_collect_minor,currency,version,order_version,preparation_started,ready,created_at,updated_at,delivery_address,latitude,longitude,dispatch_deadline,delivery_latitude,delivery_longitude) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id`, d.OrderID, d.Status, d.AmountToCollectMinor, d.Currency, d.Version, d.OrderVersion, d.PreparationStarted, d.Ready, d.CreatedAt, d.UpdatedAt, d.DeliveryAddress, latitude, longitude, d.DispatchDeadline, deliveryLatitude, deliveryLongitude).Scan(&d.ID)
 		if err != nil {
 			return err
 		}

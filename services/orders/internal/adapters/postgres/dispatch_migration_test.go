@@ -17,4 +17,11 @@ func applyDispatchMigration(t *testing.T, pool *pgxpool.Pool) {
 	if _, err = pool.Exec(context.Background(), string(body)); err != nil {
 		t.Fatal(err)
 	}
+	body, err = os.ReadFile("../../../migrations/000008_pricing.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(context.Background(), string(body)); err != nil {
+		t.Fatal(err)
+	}
 }

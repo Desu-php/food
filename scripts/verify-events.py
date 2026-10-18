@@ -33,6 +33,19 @@ def request(port, path, body=None, headers=None):
         return json.load(response)
 
 
+def configure_delivery():
+    headers = {"Content-Type": "application/json", "X-Dev-User-ID": "1"}
+    for path, method, body in [
+        ("/restaurants/1", "PATCH", {"latitude": 38.56, "longitude": 68.77}),
+        ("/restaurants/1/delivery-settings", "PUT", {"delivery_enabled": True, "pickup_enabled": True, "minimum_delivery_subtotal_minor": 0}),
+        ("/restaurants/1/delivery-tariffs", "POST", {"max_distance_meters": 8000, "delivery_fee_minor": 0}),
+    ]:
+        req = urllib.request.Request("http://localhost:28080" + path, method=method,
+                                     data=json.dumps(body).encode(), headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            assert response.status in (200, 201)
+
+
 def sql(service, database, user, query):
     return compose("exec", "-T", service, "psql", "-U", user, "-d", database,
                    "-At", "-v", "ON_ERROR_STOP=1", "-c", query, capture=True).strip()
@@ -50,11 +63,12 @@ def eventually(check, timeout=90):
 def main():
     try:
         compose("up", "--build", "-d", "--wait", "--wait-timeout", "180", "--scale", "outbox=2")
+        configure_delivery()
         category = request(28080, "/restaurants/1/categories", {"name": "Events test", "sort_order": 0})
         item = request(28080, "/restaurants/1/items", {"category_id": category["id"], "name": "Test dish", "price_minor": 25000, "currency": "TJS", "is_available": True})
         compose("stop", "redpanda")
         headers = {"X-Dev-Customer-ID": "7", "Idempotency-Key": "events-e2e", "X-Request-ID": "events-e2e-request"}
-        body = {"restaurant_id": 1, "currency": "TJS", "fulfillment_type": "DELIVERY", "delivery_address": "Test delivery address", "expected_subtotal_minor": 25000, "items": [{"menu_item_id": item["id"], "quantity": 1}]}
+        body = {"restaurant_id": 1, "currency": "TJS", "fulfillment_type": "DELIVERY", "delivery_latitude": 38.56, "delivery_longitude": 68.77, "delivery_address": "Test delivery address", "expected_total_minor": 25000, "items": [{"menu_item_id": item["id"], "quantity": 1}]}
         order = request(28081, "/orders", body, headers)
         assert request(28081, "/orders", body, headers)["id"] == order["id"]
         assert sql("postgres", "orders", "orders_service", "SELECT count(*) FROM outbox_events") == "1"

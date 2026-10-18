@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Desu-php/food/contracts/geo"
 	"github.com/Desu-php/food/services/orders/internal/application"
 	"github.com/Desu-php/food/services/orders/internal/domain"
 )
@@ -71,7 +72,7 @@ func (r *testRepository) Cancel(_ context.Context, customer, id int64, change ap
 
 type testCatalog struct{ err error }
 
-func (c testCatalog) Quote(_ context.Context, id int64, items []application.RequestedItem) (application.CatalogQuote, error) {
+func (c testCatalog) Quote(_ context.Context, id int64, items []application.RequestedItem, options ...application.QuoteOptions) (application.CatalogQuote, error) {
 	if c.err != nil {
 		return application.CatalogQuote{}, c.err
 	}
@@ -79,13 +80,26 @@ func (c testCatalog) Quote(_ context.Context, id int64, items []application.Requ
 	for i, p := range items {
 		result[i] = domain.PricedItem{MenuItemID: p.MenuItemID, RestaurantID: id, Name: "Плов", Quantity: p.Quantity, UnitPriceMinor: 6500, Currency: "TJS"}
 	}
-	return application.CatalogQuote{Items: result, PickupAddress: "Restaurant location"}, nil
+	var subtotal int64
+	for _, i := range result {
+		subtotal += i.UnitPriceMinor * i.Quantity
+	}
+	snap := &domain.PricingSnapshot{SettingsVersion: 1}
+	var location *geo.Point
+	if len(options) > 0 && options[0].FulfillmentType == domain.Delivery {
+		d := int64(0)
+		snap.TariffID = 1
+		snap.MaxDistanceMeters = 2000
+		snap.DistanceMeters = &d
+		location = &geo.Point{Latitude: 38.56, Longitude: 68.77}
+	}
+	return application.CatalogQuote{Items: result, PickupAddress: "Restaurant location", DeliveryAvailable: true, ItemsSubtotalMinor: subtotal, TotalMinor: subtotal, PricingSnapshot: snap, RestaurantLocation: location}, nil
 }
 func newHandler(repo *testRepository, catalogErr error, dev bool, readyErr error) http.Handler {
 	return NewHandler(application.NewOrders(repo, testCatalog{catalogErr}), func(context.Context) error { return readyErr }, slog.New(slog.NewTextHandler(io.Discard, nil)), time.Second, dev)
 }
 
-const createBody = `{"restaurant_id":1,"fulfillment_type":"DELIVERY","delivery_address":"Test delivery address","currency":"TJS","expected_subtotal_minor":13000,"items":[{"menu_item_id":100,"quantity":2}]}`
+const createBody = `{"restaurant_id":1,"fulfillment_type":"DELIVERY","delivery_address":"Test delivery address","currency":"TJS","expected_total_minor":13000,"delivery_latitude":38.56,"delivery_longitude":68.77,"items":[{"menu_item_id":100,"quantity":2}]}`
 
 func request(h http.Handler, method, path, body, customer, key string) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, path, strings.NewReader(body))
@@ -147,7 +161,7 @@ func TestOrderHTTPErrors(t *testing.T) {
 		{"empty", `{"restaurant_id":1,"fulfillment_type":"DELIVERY","delivery_address":"Test delivery address","currency":"TJS","expected_subtotal_minor":1,"items":[]}`, "7", "key", true, nil, 400},
 		{"client price", strings.Replace(createBody, `"quantity":2`, `"quantity":2,"unit_price_minor":1`, 1), "7", "key", true, nil, 400},
 		{"client identity", strings.Replace(createBody, `"restaurant_id":1`, `"restaurant_id":1,"customer_id":99`, 1), "7", "key", true, nil, 400},
-		{"missing expected", strings.Replace(createBody, `"expected_subtotal_minor":13000,`, "", 1), "7", "key", true, nil, 400},
+		{"missing expected", strings.Replace(createBody, `"expected_total_minor":13000,"delivery_latitude":38.56,"delivery_longitude":68.77,`, "", 1), "7", "key", true, nil, 400},
 		{"price changed", strings.Replace(createBody, "13000", "12000", 1), "7", "key", true, nil, 409},
 		{"missing identity", createBody, "", "key", true, nil, 401},
 		{"production identity", createBody, "7", "key", false, nil, 401},
@@ -198,6 +212,7 @@ func TestFulfillmentHTTPValidation(t *testing.T) {
 		}
 	}
 	body := strings.Replace(createBody, `"fulfillment_type":"DELIVERY","delivery_address":"Test delivery address",`, `"fulfillment_type":"PICKUP",`, 1)
+	body = strings.Replace(body, `"delivery_latitude":38.56,"delivery_longitude":68.77,`, "", 1)
 	w := request(newHandler(&testRepository{}, nil, true, nil), "POST", "/orders", body, "7", "key")
 	if w.Code != 201 {
 		t.Fatal(w.Code, w.Body)

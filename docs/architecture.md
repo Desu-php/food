@@ -207,3 +207,10 @@ DispatchRepository; Redis/PostgreSQL adapters реализуют эти порт
 инвариантами. Между claim и назначением Redis вызывается без SQL-транзакции.
 Orders сохраняет Catalog snapshot и deadline, продолжая прежнюю fulfillment Saga.
 [API, эксплуатация и ограничения](automatic-dispatch.md).
+
+## Pricing и зоны доставки
+
+Catalog рассчитывает private quote v2 по согласованному снимку блюд, настроек и
+радиальных тарифов. Orders хранит неизменяемую стоимость и координаты, Delivery
+получает полную сумму POS. Новые сервисы не добавлены.
+[Схема, API и границы согласованности](pricing.md), [ADR 0010](adr/0010-delivery-zones-and-pricing.md).

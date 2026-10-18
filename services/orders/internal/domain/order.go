@@ -52,7 +52,10 @@ var (
 type Order struct{ state State }
 
 type State struct {
-	RestaurantLocation    *geo.Point `json:",omitempty"`
+	TotalMinor            int64            `json:",omitempty"`
+	DeliveryLocation      *geo.Point       `json:",omitempty"`
+	PricingSnapshot       *PricingSnapshot `json:",omitempty"`
+	RestaurantLocation    *geo.Point       `json:",omitempty"`
 	ID                    int64
 	Version               int64
 	CustomerID            int64
@@ -125,6 +128,14 @@ func newOrder(customerID, restaurantID int64, currency string, items []PricedIte
 		s.SubtotalMinor += total
 		s.Items = append(s.Items, OrderItem{MenuItemID: p.MenuItemID, Name: p.Name, Quantity: p.Quantity, UnitPriceMinor: p.UnitPriceMinor, TotalPriceMinor: total})
 	}
+	s.TotalMinor = s.SubtotalMinor
+	if fulfillment.DeliveryFeeMinor < 0 || s.SubtotalMinor > math.MaxInt64-fulfillment.DeliveryFeeMinor {
+		return Order{}, ErrOverflow
+	}
+	s.DeliveryFeeMinor = fulfillment.DeliveryFeeMinor
+	s.TotalMinor += s.DeliveryFeeMinor
+	s.DeliveryLocation = geo.Clone(fulfillment.DeliveryLocation)
+	s.PricingSnapshot = clonePricing(fulfillment.PricingSnapshot)
 	s.RestaurantLocation = geo.Clone(fulfillment.RestaurantLocation)
 	s.FulfillmentType = fulfillment.Type
 	s.DeliveryAddress = fulfillment.DeliveryAddress
@@ -143,6 +154,8 @@ func (o Order) Snapshot() State {
 	s := o.state
 	s.Items = slices.Clone(s.Items)
 	s.RestaurantLocation = geo.Clone(s.RestaurantLocation)
+	s.DeliveryLocation = geo.Clone(s.DeliveryLocation)
+	s.PricingSnapshot = clonePricing(s.PricingSnapshot)
 	return s
 }
 
@@ -186,7 +199,7 @@ func Restore(s State) (Order, error) {
 		}
 		items[i] = PricedItem{p.MenuItemID, s.RestaurantID, p.Name, p.Quantity, p.UnitPriceMinor, s.Currency}
 	}
-	o, err := newOrder(s.CustomerID, s.RestaurantID, s.Currency, items, s.CreatedAt, Fulfillment{Type: s.FulfillmentType, DeliveryAddress: s.DeliveryAddress, PickupAddress: s.PickupAddress}, s.LegacyDeliveryAddress)
+	o, err := newOrder(s.CustomerID, s.RestaurantID, s.Currency, items, s.CreatedAt, Fulfillment{Type: s.FulfillmentType, DeliveryAddress: s.DeliveryAddress, PickupAddress: s.PickupAddress, RestaurantLocation: s.RestaurantLocation, DeliveryLocation: s.DeliveryLocation, DeliveryFeeMinor: s.DeliveryFeeMinor, PricingSnapshot: s.PricingSnapshot}, s.LegacyDeliveryAddress)
 	if err != nil {
 		return Order{}, err
 	}
@@ -200,6 +213,8 @@ func Restore(s State) (Order, error) {
 	}
 	s.Items = slices.Clone(s.Items)
 	s.RestaurantLocation = geo.Clone(s.RestaurantLocation)
+	s.DeliveryLocation = geo.Clone(s.DeliveryLocation)
+	s.PricingSnapshot = clonePricing(s.PricingSnapshot)
 	return Order{state: s}, nil
 }
 
@@ -236,7 +251,7 @@ func (o *Order) Transition(target Status, now time.Time) error {
 }
 
 func (o *Order) Complete(amount int64, currency, method string, now time.Time) error {
-	if o.state.FulfillmentType != Delivery || amount != o.state.SubtotalMinor || currency != o.state.Currency || method != POSOnDelivery {
+	if o.state.FulfillmentType != Delivery || amount != o.state.AmountToCollect() || currency != o.state.Currency || method != POSOnDelivery {
 		return ErrPaymentMismatch
 	}
 	if o.state.Status != OnTheWay || o.state.PaymentStatus != Unpaid {
@@ -343,6 +358,9 @@ func (o *Order) ConfirmPickup(courier int64, legacy bool, now time.Time) error {
 
 // Fulfillment is immutable after creation; addresses are snapshots of the agreed locations.
 type Fulfillment struct {
+	DeliveryFeeMinor   int64
+	DeliveryLocation   *geo.Point
+	PricingSnapshot    *PricingSnapshot
 	RestaurantLocation *geo.Point
 	Type               FulfillmentType
 	DeliveryAddress    string
@@ -356,16 +374,36 @@ func validateFulfillment(s State) error {
 	if s.RestaurantLocation != nil && (!s.RestaurantLocation.Valid() || s.FulfillmentType != Delivery) {
 		return ErrInvalidOrder
 	}
-	if s.DeliveryFeeMinor != 0 {
+	if s.DeliveryFeeMinor < 0 || s.SubtotalMinor > math.MaxInt64-s.DeliveryFeeMinor || s.TotalMinor != 0 && s.TotalMinor != s.SubtotalMinor+s.DeliveryFeeMinor {
 		return ErrInvalidOrder
-	} // No delivery tariff exists yet.
+	}
+	if s.DeliveryFeeMinor != 0 && s.PricingSnapshot == nil {
+		return ErrInvalidOrder
+	}
+	if s.TotalMinor == 0 && (s.PricingSnapshot != nil || s.DeliveryFeeMinor != 0) {
+		return ErrInvalidOrder
+	}
+	if s.DeliveryLocation != nil && (!s.DeliveryLocation.Valid() || s.FulfillmentType != Delivery) {
+		return ErrInvalidOrder
+	}
+	if p := s.PricingSnapshot; p != nil {
+		if p.SettingsVersion <= 0 || p.MinimumDeliverySubtotalMinor < 0 || p.DeliveryFeeMinor != s.DeliveryFeeMinor {
+			return ErrInvalidOrder
+		}
+		if s.FulfillmentType == Delivery && (s.RestaurantLocation == nil || s.DeliveryLocation == nil || p.TariffID <= 0 || p.DistanceMeters == nil || *p.DistanceMeters < 0 || p.MaxDistanceMeters <= 0 || p.MaxDistanceMeters < *p.DistanceMeters || s.SubtotalMinor < p.MinimumDeliverySubtotalMinor) {
+			return ErrInvalidOrder
+		}
+		if s.FulfillmentType == Pickup && (p.TariffID != 0 || p.MaxDistanceMeters != 0 || p.DistanceMeters != nil) {
+			return ErrInvalidOrder
+		}
+	}
 	switch s.FulfillmentType {
 	case Delivery:
 		if s.PaymentMethod != POSOnDelivery || s.PickupAddress != "" || (!ValidAddress(s.DeliveryAddress) && !(s.LegacyDeliveryAddress && s.DeliveryAddress == "")) || s.Status == PickedUpByCustomer {
 			return ErrInvalidOrder
 		}
 	case Pickup:
-		if s.PaymentMethod != POSAtPickup || s.DeliveryAddress != "" || s.LegacyDeliveryAddress || !ValidAddress(s.PickupAddress) || s.CourierID != 0 || s.CancellationRequested || s.Status == WaitingCourier || s.Status == OnTheWay || s.Status == Delivered {
+		if s.DeliveryFeeMinor != 0 || s.DeliveryLocation != nil || s.PaymentMethod != POSAtPickup || s.DeliveryAddress != "" || s.LegacyDeliveryAddress || !ValidAddress(s.PickupAddress) || s.CourierID != 0 || s.CancellationRequested || s.Status == WaitingCourier || s.Status == OnTheWay || s.Status == Delivered {
 			return ErrInvalidOrder
 		}
 	default:

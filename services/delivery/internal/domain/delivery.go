@@ -60,6 +60,7 @@ type Confirmation struct {
 	ConfirmedAt      time.Time
 }
 type Delivery struct {
+	DeliveryLocation     *geo.Point
 	DispatchPaused       bool
 	RestaurantLocation   *geo.Point
 	DispatchDeadline     *time.Time

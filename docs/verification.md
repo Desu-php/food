@@ -463,3 +463,35 @@ GitHub-hosted Actions ещё не выполнялся: workflow добавле�
 - [services/orders/internal/bootstrap/run.go](../services/orders/internal/bootstrap/run.go)
 - [services/orders/migrations/000006_consumer_quarantine.down.sql](../services/orders/migrations/000006_consumer_quarantine.down.sql)
 - [services/orders/migrations/000006_consumer_quarantine.up.sql](../services/orders/migrations/000006_consumer_quarantine.up.sql)
+
+## Этап 13 — Delivery Zones & Pricing (2026-10-18)
+
+Выполнено локально на итоговом Go-коде:
+
+- `GOCACHE=/tmp/food-go-cache ./scripts/check.sh`: PASS. gofmt, go vet,
+  go test, go test -race для всех шести модулей, независимые GOWORK=off builds,
+  обе Compose configurations.
+- `GOCACHE=/tmp/food-go-cache ./scripts/test-integration.sh`: PASS.
+  PostgreSQL 18, Redpanda и Redis; полный round trip миграций Catalog, Orders,
+  Delivery, Notifications; integration suite с race, включая новые pricing tests.
+- `python3 scripts/verify-pricing.py`: PASS. Настоящий quote v2, grants/CRUD,
+  minimum/zone/disabled fulfillment, PICKUP с нулевым fee, 409 с новой суммой,
+  конкурентное изменение тарифов и создание заказов, immutable retries,
+  ручное назначение и полный POS/DeliveryCompleted/Orders Saga.
+- `python3 scripts/verify-offers.py`: PASS с платной доставкой 1000 minor units:
+  subtotal=25000, total=26000. Сохранены nearest offer, ownership, cooldown,
+  concurrent acceptance, Kafka outage/recovery, preparation gate,
+  cancellation, TTL recovery после рестарта.
+- `python3 scripts/verify-pickup.py`: PASS. Выдача по секрету, POS, повтор после
+  рестарта, отсутствие Delivery/Saga у PICKUP, Notifications и совместный DELIVERY.
+- `python3 -m py_compile` обновлённых E2E scripts и `git diff --check`: PASS.
+
+Первый запуск внутри sandbox не мог использовать httptest TCP listeners и Docker;
+последующие проверки выполнены с разрешённым доступом. Во время одного полного
+integration run прежний TestDispatchRespectsConsumerQuarantine не получил ожидаемую
+lease (false, nil). Повторный полный прогон прошёл без изменения механизма dispatch;
+ошибка не воспроизвелась. Начальные ошибки адаптации fixtures/порядка rollback и
+времени тестового DeliveryCompleted исправлены; они не считаются успешными прогонами.
+
+Результаты проверяют локальный тестовый deployment. Production OIDC providers,
+нагрузочный предел, geocoding и road routing этим модулем не проверяются.

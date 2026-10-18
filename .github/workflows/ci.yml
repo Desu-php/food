@@ -33,3 +33,11 @@ jobs:
           go-version-file: go.work
           cache-dependency-path: '**/go.sum'
       - run: ./scripts/test-integration.sh
+  pricing-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: python3 scripts/verify-pricing.py

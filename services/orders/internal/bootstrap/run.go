@@ -17,7 +17,7 @@ import (
 	"github.com/Desu-php/food/services/orders/internal/application"
 )
 
-const schemaCheck = "SELECT o.latitude,o.longitude,s.dispatch_deadline,o.id,o.version,o.customer_id,o.restaurant_id,o.status,o.courier_id,o.cancellation_requested,o.payment_method,o.payment_status,o.currency,o.subtotal_minor,o.created_at,o.updated_at,i.id,i.order_id,i.menu_item_id,i.name,i.quantity,i.unit_price_minor,i.total_price_minor,k.customer_id,k.key,k.request_hash,k.order_id,k.response,e.event_id,e.claim_token,e.lease_until,e.stream,s.order_id,s.next_attempt_at FROM orders o LEFT JOIN order_items i ON i.order_id=o.id LEFT JOIN idempotency_keys k ON k.order_id=o.id LEFT JOIN outbox_events e ON e.aggregate_id=o.id LEFT JOIN order_sagas s ON s.order_id=o.id LIMIT 0"
+const schemaCheck = "SELECT o.total_minor,o.pricing_snapshot,o.delivery_latitude,o.delivery_longitude,o.latitude,o.longitude,s.dispatch_deadline,o.id,o.version,o.customer_id,o.restaurant_id,o.status,o.courier_id,o.cancellation_requested,o.payment_method,o.payment_status,o.currency,o.subtotal_minor,o.created_at,o.updated_at,i.id,i.order_id,i.menu_item_id,i.name,i.quantity,i.unit_price_minor,i.total_price_minor,k.customer_id,k.key,k.request_hash,k.order_id,k.response,e.event_id,e.claim_token,e.lease_until,e.stream,s.order_id,s.next_attempt_at FROM orders o LEFT JOIN order_items i ON i.order_id=o.id LEFT JOIN idempotency_keys k ON k.order_id=o.id LEFT JOIN outbox_events e ON e.aggregate_id=o.id LEFT JOIN order_sagas s ON s.order_id=o.id LIMIT 0"
 
 func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 	cfg.DevAuthEnabled = cfg.Authentication.DevEnabled

@@ -52,17 +52,20 @@ func (r *Repository) Couriers(ctx context.Context, after int64, limit int) ([]do
 	return result, rows.Err()
 }
 
-const deliveryColumns = `d.id,d.order_id,COALESCE(d.courier_id,0),d.status,d.amount_to_collect_minor,d.currency,d.version,d.order_version,d.ready,d.preparation_started,d.created_at,d.updated_at,d.delivery_address,d.latitude,d.longitude,d.dispatch_deadline,d.dispatch_attempts,d.dispatch_reason,d.dispatch_next_at,d.dispatch_paused`
+const deliveryColumns = `d.id,d.order_id,COALESCE(d.courier_id,0),d.status,d.amount_to_collect_minor,d.currency,d.version,d.order_version,d.ready,d.preparation_started,d.created_at,d.updated_at,d.delivery_address,d.latitude,d.longitude,d.dispatch_deadline,d.dispatch_attempts,d.dispatch_reason,d.dispatch_next_at,d.dispatch_paused,d.delivery_latitude,d.delivery_longitude`
 
 func scanDelivery(row pgx.Row) (domain.Delivery, error) {
 	var d domain.Delivery
-	var latitude, longitude *float64
-	err := row.Scan(&d.ID, &d.OrderID, &d.CourierID, &d.Status, &d.AmountToCollectMinor, &d.Currency, &d.Version, &d.OrderVersion, &d.Ready, &d.PreparationStarted, &d.CreatedAt, &d.UpdatedAt, &d.DeliveryAddress, &latitude, &longitude, &d.DispatchDeadline, &d.DispatchAttempts, &d.DispatchReason, &d.DispatchNextAt, &d.DispatchPaused)
+	var latitude, longitude, deliveryLatitude, deliveryLongitude *float64
+	err := row.Scan(&d.ID, &d.OrderID, &d.CourierID, &d.Status, &d.AmountToCollectMinor, &d.Currency, &d.Version, &d.OrderVersion, &d.Ready, &d.PreparationStarted, &d.CreatedAt, &d.UpdatedAt, &d.DeliveryAddress, &latitude, &longitude, &d.DispatchDeadline, &d.DispatchAttempts, &d.DispatchReason, &d.DispatchNextAt, &d.DispatchPaused, &deliveryLatitude, &deliveryLongitude)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return d, domain.ErrNotFound
 	}
 	if latitude != nil && longitude != nil {
 		d.RestaurantLocation = &geo.Point{Latitude: *latitude, Longitude: *longitude}
+	}
+	if deliveryLatitude != nil && deliveryLongitude != nil {
+		d.DeliveryLocation = &geo.Point{Latitude: *deliveryLatitude, Longitude: *deliveryLongitude}
 	}
 	return d, err
 }

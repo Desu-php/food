@@ -33,6 +33,7 @@ func ApplyDeliveryCommand(c commands.Command, current *domain.Delivery, preparat
 		if err != nil {
 			return change, err
 		}
+		d.DeliveryLocation = geo.Clone(c.Payload.DeliveryLocation)
 		d.RestaurantLocation = geo.Clone(c.Payload.RestaurantLocation)
 		d.DispatchDeadline = c.Payload.DispatchDeadline
 		d.DeliveryAddress = c.Payload.DeliveryAddress
@@ -46,7 +47,7 @@ func ApplyDeliveryCommand(c commands.Command, current *domain.Delivery, preparat
 		}
 	} else {
 		d = *current
-		if d.AmountToCollectMinor != c.Payload.AmountToCollectMinor || d.Currency != c.Payload.Currency || d.DeliveryAddress != c.Payload.DeliveryAddress || !geo.Equal(d.RestaurantLocation, c.Payload.RestaurantLocation) {
+		if !geo.Equal(d.DeliveryLocation, c.Payload.DeliveryLocation) || d.AmountToCollectMinor != c.Payload.AmountToCollectMinor || d.Currency != c.Payload.Currency || d.DeliveryAddress != c.Payload.DeliveryAddress || !geo.Equal(d.RestaurantLocation, c.Payload.RestaurantLocation) {
 			return change, ErrEventConflict
 		}
 		if c.CommandType == commands.CreateDelivery && c.Payload.DispatchDeadline != nil {

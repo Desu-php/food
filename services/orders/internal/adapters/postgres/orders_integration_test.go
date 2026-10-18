@@ -62,7 +62,7 @@ func integrationPool(t *testing.T, migrations ...string) *pgxpool.Pool {
 	}
 	t.Cleanup(pool.Close)
 	if len(migrations) == 0 {
-		migrations = []string{"000001_orders", "000002_outbox", "000003_fulfillment", "000004_saga", "000005_pickup", "000006_consumer_quarantine", "000007_dispatch_snapshot"}
+		migrations = []string{"000001_orders", "000002_outbox", "000003_fulfillment", "000004_saga", "000005_pickup", "000006_consumer_quarantine", "000007_dispatch_snapshot", "000008_pricing"}
 	}
 	for _, migration := range migrations {
 		sql, err := os.ReadFile("../../../migrations/" + migration + ".up.sql")
@@ -203,7 +203,7 @@ func TestConcurrentOrderCreationHTTP(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"restaurant_id": 1, "currency": "TJS", "items": []map[string]any{{"menu_item_id": 10, "restaurant_id": 1, "name": "Original name", "quantity": 2, "unit_price_minor": price.Load(), "currency": "TJS"}}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"restaurant_id": 1, "currency": "TJS", "restaurant_location": map[string]any{"latitude": 38.56, "longitude": 68.77}, "delivery_available": true, "items_subtotal_minor": price.Load() * 2, "total_minor": price.Load() * 2, "pricing_snapshot": map[string]any{"settings_version": 1, "tariff_id": 1, "max_distance_meters": 2000, "distance_meters": 0, "delivery_fee_minor": 0}, "items": []map[string]any{{"menu_item_id": 10, "restaurant_id": 1, "name": "Original name", "quantity": 2, "unit_price_minor": price.Load(), "currency": "TJS"}}})
 	}))
 	defer catalogServer.Close()
 	client, err := catalogadapter.NewClient(catalogServer.URL, 10*time.Second)
@@ -214,7 +214,7 @@ func TestConcurrentOrderCreationHTTP(t *testing.T) {
 	svc := application.NewOrders(NewOrders(pool), client)
 	server := httptest.NewServer(httpadapter.NewHandler(svc, pool.Ping, slog.New(slog.NewTextHandler(io.Discard, nil)), 15*time.Second, true))
 	defer server.Close()
-	body := `{"restaurant_id":1,"fulfillment_type":"DELIVERY","delivery_address":"Test delivery address","currency":"TJS","expected_subtotal_minor":13000,"items":[{"menu_item_id":10,"quantity":2}]}`
+	body := `{"restaurant_id":1,"fulfillment_type":"DELIVERY","delivery_address":"Test delivery address","currency":"TJS","expected_total_minor":13000,"delivery_latitude":38.56,"delivery_longitude":68.77,"items":[{"menu_item_id":10,"quantity":2}]}`
 	post := func(key, payload string) (int, []byte, error) {
 		req, err := http.NewRequestWithContext(ctx, "POST", server.URL+"/orders", strings.NewReader(payload))
 		if err != nil {
@@ -308,7 +308,7 @@ func TestConcurrentOrderCreationHTTP(t *testing.T) {
 	}
 	catalogServer.Close()
 	restarted := application.NewOrders(NewOrders(pool), client)
-	replay, err := restarted.CreateOrder(ctx, application.CreateCommand{FulfillmentType: domain.Delivery, DeliveryAddress: "Test delivery address", CustomerID: 7, RestaurantID: 1, Currency: "TJS", ExpectedSubtotalMinor: 13000, Items: []application.RequestedItem{{MenuItemID: 10, Quantity: 2}}}, "concurrent")
+	replay, err := restarted.CreateOrder(ctx, application.CreateCommand{ExpectedTotalMinor: ptrInt64(13000), DeliveryLatitude: ptrFloat64(38.56), DeliveryLongitude: ptrFloat64(68.77), FulfillmentType: domain.Delivery, DeliveryAddress: "Test delivery address", CustomerID: 7, RestaurantID: 1, Currency: "TJS", Items: []application.RequestedItem{{MenuItemID: 10, Quantity: 2}}}, "concurrent")
 	if err != nil || replay.Snapshot().Status != domain.WaitingRestaurant || replay.Snapshot().Items[0].UnitPriceMinor != 6500 || replay.Snapshot().Items[0].Name != "Original name" {
 		t.Fatalf("replay after restart/outage/cancel: %+v %v", replay, err)
 	}
@@ -404,3 +404,6 @@ func TestOrdersMigrationRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func ptrInt64(v int64) *int64       { return &v }
+func ptrFloat64(v float64) *float64 { return &v }

@@ -88,7 +88,7 @@ func (r *Repository) ProcessOrder(ctx context.Context, e events.Event) error {
 		if err != nil {
 			return err
 		}
-		if d.AmountToCollectMinor != p.SubtotalMinor || d.Currency != p.Currency {
+		if d.AmountToCollectMinor != p.AmountToCollect() || d.Currency != p.Currency {
 			return application.ErrEventConflict
 		}
 		if preparation {
