@@ -10,10 +10,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	httpadapter "example.com/food/catalog/internal/adapters/http"
-	"example.com/food/catalog/internal/adapters/postgres"
-	"example.com/food/catalog/internal/application"
-	"example.com/food/platform/security"
+	"github.com/Desu-php/food/platform/security"
+	httpadapter "github.com/Desu-php/food/services/catalog/internal/adapters/http"
+	"github.com/Desu-php/food/services/catalog/internal/adapters/postgres"
+	"github.com/Desu-php/food/services/catalog/internal/application"
 )
 
 func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {

@@ -6,8 +6,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"example.com/food/orders/internal/application"
-	"example.com/food/orders/internal/domain"
+	"github.com/Desu-php/food/services/orders/internal/application"
+	"github.com/Desu-php/food/services/orders/internal/domain"
 )
 
 func (r *Orders) ListIncoming(ctx context.Context, restaurant, after int64, limit int) ([]domain.Order, error) {

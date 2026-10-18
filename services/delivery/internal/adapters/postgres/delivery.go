@@ -10,9 +10,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"example.com/food/contracts/geo"
-	"example.com/food/delivery/internal/application"
-	"example.com/food/delivery/internal/domain"
+	"github.com/Desu-php/food/contracts/geo"
+	"github.com/Desu-php/food/services/delivery/internal/application"
+	"github.com/Desu-php/food/services/delivery/internal/domain"
 )
 
 type Repository struct{ pool *pgxpool.Pool }

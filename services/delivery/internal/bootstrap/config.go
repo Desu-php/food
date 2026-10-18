@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"example.com/food/delivery/internal/application"
-	"example.com/food/platform/security"
+	"github.com/Desu-php/food/platform/security"
+	"github.com/Desu-php/food/services/delivery/internal/application"
 )
 
 type Config struct {

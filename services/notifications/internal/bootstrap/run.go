@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"time"
 
-	httpadapter "example.com/food/notifications/internal/adapters/http"
-	"example.com/food/notifications/internal/adapters/kafka"
-	"example.com/food/notifications/internal/adapters/postgres"
-	"example.com/food/notifications/internal/application"
+	httpadapter "github.com/Desu-php/food/services/notifications/internal/adapters/http"
+	"github.com/Desu-php/food/services/notifications/internal/adapters/kafka"
+	"github.com/Desu-php/food/services/notifications/internal/adapters/postgres"
+	"github.com/Desu-php/food/services/notifications/internal/application"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

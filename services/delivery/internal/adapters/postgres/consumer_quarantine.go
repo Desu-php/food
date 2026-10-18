@@ -9,10 +9,10 @@ import (
 	"math/rand/v2"
 	"time"
 
-	commands "example.com/food/contracts/delivery/commands/v1"
-	events "example.com/food/contracts/orders/v1"
-	"example.com/food/delivery/internal/application"
-	"example.com/food/delivery/internal/domain"
+	commands "github.com/Desu-php/food/contracts/delivery/commands/v1"
+	events "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/services/delivery/internal/application"
+	"github.com/Desu-php/food/services/delivery/internal/domain"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

@@ -14,15 +14,15 @@ import (
 
 	redis "github.com/redis/go-redis/v9"
 
-	commands "example.com/food/contracts/delivery/commands/v1"
-	events "example.com/food/contracts/delivery/v1"
-	"example.com/food/contracts/geo"
-	orderevents "example.com/food/contracts/orders/v1"
-	httpadapter "example.com/food/delivery/internal/adapters/http"
-	redisadapter "example.com/food/delivery/internal/adapters/redis"
-	"example.com/food/delivery/internal/application"
-	"example.com/food/delivery/internal/domain"
-	"example.com/food/platform/security"
+	commands "github.com/Desu-php/food/contracts/delivery/commands/v1"
+	events "github.com/Desu-php/food/contracts/delivery/v1"
+	"github.com/Desu-php/food/contracts/geo"
+	orderevents "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/platform/security"
+	httpadapter "github.com/Desu-php/food/services/delivery/internal/adapters/http"
+	redisadapter "github.com/Desu-php/food/services/delivery/internal/adapters/redis"
+	"github.com/Desu-php/food/services/delivery/internal/application"
+	"github.com/Desu-php/food/services/delivery/internal/domain"
 )
 
 func geoDelivery(t *testing.T, r *Repository, order int64) domain.Delivery {

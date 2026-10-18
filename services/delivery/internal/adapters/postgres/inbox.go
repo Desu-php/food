@@ -9,8 +9,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	events "example.com/food/contracts/orders/v1"
-	"example.com/food/delivery/internal/application"
+	events "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/services/delivery/internal/application"
 )
 
 func (r *Repository) ProcessOrder(ctx context.Context, e events.Event) error {

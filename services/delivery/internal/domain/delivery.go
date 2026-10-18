@@ -6,7 +6,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"example.com/food/contracts/geo"
+	"github.com/Desu-php/food/contracts/geo"
 )
 
 const (

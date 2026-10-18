@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"example.com/food/catalog/internal/domain"
+	"github.com/Desu-php/food/services/catalog/internal/domain"
 )
 
 type menuRepositoryStub struct {

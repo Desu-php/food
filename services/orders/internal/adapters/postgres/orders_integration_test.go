@@ -19,10 +19,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	catalogadapter "example.com/food/orders/internal/adapters/catalog"
-	httpadapter "example.com/food/orders/internal/adapters/http"
-	"example.com/food/orders/internal/application"
-	"example.com/food/orders/internal/domain"
+	catalogadapter "github.com/Desu-php/food/services/orders/internal/adapters/catalog"
+	httpadapter "github.com/Desu-php/food/services/orders/internal/adapters/http"
+	"github.com/Desu-php/food/services/orders/internal/application"
+	"github.com/Desu-php/food/services/orders/internal/domain"
 )
 
 func integrationPool(t *testing.T, migrations ...string) *pgxpool.Pool {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"example.com/food/notifications/internal/application"
+	"github.com/Desu-php/food/services/notifications/internal/application"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 

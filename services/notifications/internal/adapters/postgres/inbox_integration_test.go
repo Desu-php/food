@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	events "example.com/food/contracts/orders/v1"
-	"example.com/food/notifications/internal/adapters/kafka"
-	"example.com/food/notifications/internal/application"
+	events "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/services/notifications/internal/adapters/kafka"
+	"github.com/Desu-php/food/services/notifications/internal/application"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/twmb/franz-go/pkg/kgo"

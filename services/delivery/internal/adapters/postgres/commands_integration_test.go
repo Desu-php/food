@@ -5,10 +5,10 @@ import (
 	"errors"
 	"testing"
 
-	commands "example.com/food/contracts/delivery/commands/v1"
-	events "example.com/food/contracts/delivery/v1"
-	"example.com/food/delivery/internal/application"
-	"example.com/food/delivery/internal/domain"
+	commands "github.com/Desu-php/food/contracts/delivery/commands/v1"
+	events "github.com/Desu-php/food/contracts/delivery/v1"
+	"github.com/Desu-php/food/services/delivery/internal/application"
+	"github.com/Desu-php/food/services/delivery/internal/domain"
 )
 
 func TestCancellationTombstoneAndCommandReplies(t *testing.T) {

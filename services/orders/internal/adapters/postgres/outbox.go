@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	events "example.com/food/contracts/orders/v1"
-	"example.com/food/orders/internal/application"
+	events "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/services/orders/internal/application"
 )
 
 func insertEvent(ctx context.Context, tx pgx.Tx, e events.Event) error {

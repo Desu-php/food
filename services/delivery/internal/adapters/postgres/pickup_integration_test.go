@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	commands "example.com/food/contracts/delivery/commands/v1"
-	events "example.com/food/contracts/orders/v1"
-	"example.com/food/delivery/internal/application"
+	commands "github.com/Desu-php/food/contracts/delivery/commands/v1"
+	events "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/services/delivery/internal/application"
 )
 
 func TestPickupEventsHaveNoDeliveryEffects(t *testing.T) {

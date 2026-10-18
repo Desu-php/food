@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"example.com/food/orders/internal/bootstrap"
+	"github.com/Desu-php/food/services/orders/internal/bootstrap"
 )
 
 func main() {

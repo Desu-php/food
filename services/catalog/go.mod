@@ -1,4 +1,4 @@
-module example.com/food/catalog
+module github.com/Desu-php/food/services/catalog
 
 go 1.27.2
 
@@ -14,12 +14,12 @@ require (
 	golang.org/x/text v0.24.0 // indirect
 )
 
-replace example.com/food/contracts => ../../contracts
+replace github.com/Desu-php/food/contracts => ../../contracts
 
 require (
-	example.com/food/contracts v0.0.0
-	example.com/food/platform v0.0.0
+	github.com/Desu-php/food/contracts v0.0.0
+	github.com/Desu-php/food/platform v0.0.0
 	github.com/jackc/pgx/v5 v5.7.6
 )
 
-replace example.com/food/platform => ../../platform
+replace github.com/Desu-php/food/platform => ../../platform

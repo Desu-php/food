@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"example.com/food/contracts/correlation"
-	events "example.com/food/contracts/orders/v1"
-	"example.com/food/orders/internal/application"
+	"github.com/Desu-php/food/contracts/correlation"
+	events "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/services/orders/internal/application"
 )
 
 func TestOutboxAtomicCreationCancellationAndIdempotency(t *testing.T) {

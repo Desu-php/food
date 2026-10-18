@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
-	commands "example.com/food/contracts/delivery/commands/v1"
-	delivery "example.com/food/contracts/delivery/v1"
-	"example.com/food/contracts/geo"
-	ids "example.com/food/contracts/orders/v1"
-	catalogadapter "example.com/food/orders/internal/adapters/catalog"
-	"example.com/food/orders/internal/application"
-	"example.com/food/orders/internal/domain"
+	commands "github.com/Desu-php/food/contracts/delivery/commands/v1"
+	delivery "github.com/Desu-php/food/contracts/delivery/v1"
+	"github.com/Desu-php/food/contracts/geo"
+	ids "github.com/Desu-php/food/contracts/orders/v1"
+	catalogadapter "github.com/Desu-php/food/services/orders/internal/adapters/catalog"
+	"github.com/Desu-php/food/services/orders/internal/application"
+	"github.com/Desu-php/food/services/orders/internal/domain"
 )
 
 func TestCatalogGeolocationSnapshotCommandAndSaga(t *testing.T) {

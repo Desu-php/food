@@ -14,11 +14,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	events "example.com/food/contracts/orders/v1"
-	httpadapter "example.com/food/orders/internal/adapters/http"
-	"example.com/food/orders/internal/adapters/kafka"
-	"example.com/food/orders/internal/adapters/postgres"
-	"example.com/food/orders/internal/application"
+	events "github.com/Desu-php/food/contracts/orders/v1"
+	httpadapter "github.com/Desu-php/food/services/orders/internal/adapters/http"
+	"github.com/Desu-php/food/services/orders/internal/adapters/kafka"
+	"github.com/Desu-php/food/services/orders/internal/adapters/postgres"
+	"github.com/Desu-php/food/services/orders/internal/application"
 )
 
 type WorkerConfig struct {

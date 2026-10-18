@@ -6,7 +6,7 @@ import (
 	"slices"
 	"time"
 
-	"example.com/food/orders/internal/domain"
+	"github.com/Desu-php/food/services/orders/internal/domain"
 )
 
 var ErrForbidden = errors.New("restaurant access denied")

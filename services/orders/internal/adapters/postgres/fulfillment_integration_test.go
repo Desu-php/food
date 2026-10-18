@@ -15,11 +15,11 @@ import (
 	"testing"
 	"time"
 
-	deliveryevents "example.com/food/contracts/delivery/v1"
-	events "example.com/food/contracts/orders/v1"
-	httpadapter "example.com/food/orders/internal/adapters/http"
-	"example.com/food/orders/internal/application"
-	"example.com/food/orders/internal/domain"
+	deliveryevents "github.com/Desu-php/food/contracts/delivery/v1"
+	events "github.com/Desu-php/food/contracts/orders/v1"
+	httpadapter "github.com/Desu-php/food/services/orders/internal/adapters/http"
+	"github.com/Desu-php/food/services/orders/internal/application"
+	"github.com/Desu-php/food/services/orders/internal/domain"
 )
 
 func TestRestaurantHTTPAccessTransitionsAndConcurrency(t *testing.T) {

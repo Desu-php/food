@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 
-	"example.com/food/contracts/correlation"
-	events "example.com/food/contracts/delivery/v1"
-	orders "example.com/food/contracts/orders/v1"
-	"example.com/food/delivery/internal/domain"
+	"github.com/Desu-php/food/contracts/correlation"
+	events "github.com/Desu-php/food/contracts/delivery/v1"
+	orders "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/services/delivery/internal/domain"
 )
 
 func DeliveryEvent(ctx context.Context, d domain.Delivery, kind string) events.Event {

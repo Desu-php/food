@@ -4,10 +4,10 @@ import (
 	"errors"
 	"time"
 
-	commands "example.com/food/contracts/delivery/commands/v1"
-	events "example.com/food/contracts/delivery/v1"
-	"example.com/food/contracts/geo"
-	"example.com/food/delivery/internal/domain"
+	commands "github.com/Desu-php/food/contracts/delivery/commands/v1"
+	events "github.com/Desu-php/food/contracts/delivery/v1"
+	"github.com/Desu-php/food/contracts/geo"
+	"github.com/Desu-php/food/services/delivery/internal/domain"
 )
 
 // CommandChange describes one atomic local business operation. The PostgreSQL

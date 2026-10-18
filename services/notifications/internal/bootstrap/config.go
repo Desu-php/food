@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	events "example.com/food/contracts/orders/v1"
-	"example.com/food/notifications/internal/application"
+	events "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/services/notifications/internal/application"
 )
 
 type Config struct {

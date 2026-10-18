@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"example.com/food/platform/security"
+	"github.com/Desu-php/food/platform/security"
 
-	"example.com/food/orders/internal/application"
+	"github.com/Desu-php/food/services/orders/internal/application"
 )
 
 type Config struct {

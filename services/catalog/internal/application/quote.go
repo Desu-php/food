@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"example.com/food/catalog/internal/domain"
-	"example.com/food/contracts/geo"
+	"github.com/Desu-php/food/contracts/geo"
+	"github.com/Desu-php/food/services/catalog/internal/domain"
 )
 
 var (

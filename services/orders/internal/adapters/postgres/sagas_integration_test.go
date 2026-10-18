@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	commands "example.com/food/contracts/delivery/commands/v1"
-	delivery "example.com/food/contracts/delivery/v1"
-	events "example.com/food/contracts/orders/v1"
-	"example.com/food/orders/internal/application"
-	"example.com/food/orders/internal/domain"
+	commands "github.com/Desu-php/food/contracts/delivery/commands/v1"
+	delivery "github.com/Desu-php/food/contracts/delivery/v1"
+	events "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/services/orders/internal/application"
+	"github.com/Desu-php/food/services/orders/internal/domain"
 )
 
 func TestSagaAtomicAcceptRetryRestartAndOperatorRecovery(t *testing.T) {

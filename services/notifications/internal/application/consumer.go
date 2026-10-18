@@ -8,7 +8,7 @@ import (
 	"math/rand/v2"
 	"time"
 
-	events "example.com/food/contracts/orders/v1"
+	events "github.com/Desu-php/food/contracts/orders/v1"
 )
 
 type MessageSource interface {

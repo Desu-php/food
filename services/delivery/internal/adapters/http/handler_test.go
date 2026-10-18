@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"example.com/food/delivery/internal/application"
+	"github.com/Desu-php/food/services/delivery/internal/application"
 )
 
 func TestAuthenticationAndUntrustedPaymentFields(t *testing.T) {

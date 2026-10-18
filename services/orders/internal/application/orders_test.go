@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"example.com/food/orders/internal/domain"
+	"github.com/Desu-php/food/services/orders/internal/domain"
 )
 
 type catalogFunc func(context.Context, int64, []RequestedItem) ([]domain.PricedItem, error)

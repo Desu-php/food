@@ -10,10 +10,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"example.com/food/contracts/geo"
-	events "example.com/food/contracts/orders/v1"
-	"example.com/food/orders/internal/application"
-	"example.com/food/orders/internal/domain"
+	"github.com/Desu-php/food/contracts/geo"
+	events "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/services/orders/internal/application"
+	"github.com/Desu-php/food/services/orders/internal/domain"
 )
 
 type Orders struct {

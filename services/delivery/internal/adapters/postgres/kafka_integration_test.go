@@ -13,10 +13,10 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
 
-	commands "example.com/food/contracts/delivery/commands/v1"
-	events "example.com/food/contracts/orders/v1"
-	"example.com/food/delivery/internal/adapters/kafka"
-	"example.com/food/delivery/internal/application"
+	commands "github.com/Desu-php/food/contracts/delivery/commands/v1"
+	events "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/services/delivery/internal/adapters/kafka"
+	"github.com/Desu-php/food/services/delivery/internal/application"
 )
 
 func TestKafkaFailureReplayAndDuplicateInbox(t *testing.T) {

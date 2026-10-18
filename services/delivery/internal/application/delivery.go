@@ -5,8 +5,8 @@ import (
 	"slices"
 	"time"
 
-	events "example.com/food/contracts/delivery/v1"
-	"example.com/food/delivery/internal/domain"
+	events "github.com/Desu-php/food/contracts/delivery/v1"
+	"github.com/Desu-php/food/services/delivery/internal/domain"
 )
 
 type Repository interface {

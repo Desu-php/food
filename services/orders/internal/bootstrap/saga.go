@@ -12,9 +12,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	httpadapter "example.com/food/orders/internal/adapters/http"
-	"example.com/food/orders/internal/adapters/postgres"
-	"example.com/food/orders/internal/application"
+	httpadapter "github.com/Desu-php/food/services/orders/internal/adapters/http"
+	"github.com/Desu-php/food/services/orders/internal/adapters/postgres"
+	"github.com/Desu-php/food/services/orders/internal/application"
 )
 
 func LoadSagaConfig() (application.SagaConfig, error) {

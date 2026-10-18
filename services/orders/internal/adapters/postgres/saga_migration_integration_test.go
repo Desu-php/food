@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	delivery "example.com/food/contracts/delivery/v1"
-	events "example.com/food/contracts/orders/v1"
-	"example.com/food/orders/internal/application"
-	"example.com/food/orders/internal/domain"
+	delivery "github.com/Desu-php/food/contracts/delivery/v1"
+	events "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/services/orders/internal/application"
+	"github.com/Desu-php/food/services/orders/internal/domain"
 )
 
 func TestSagaMigrationReconcilesLegacyPickedUpOrder(t *testing.T) {

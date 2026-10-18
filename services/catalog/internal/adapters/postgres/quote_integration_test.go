@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"example.com/food/catalog/internal/application"
-	"example.com/food/catalog/internal/domain"
+	"github.com/Desu-php/food/services/catalog/internal/application"
+	"github.com/Desu-php/food/services/catalog/internal/domain"
 )
 
 func TestCatalogQuote(t *testing.T) {

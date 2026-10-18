@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	events "example.com/food/contracts/delivery/v1"
-	orders "example.com/food/contracts/orders/v1"
+	events "github.com/Desu-php/food/contracts/delivery/v1"
+	orders "github.com/Desu-php/food/contracts/orders/v1"
 )
 
 type source struct {

@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	"example.com/food/contracts/correlation"
-	commands "example.com/food/contracts/delivery/commands/v1"
-	events "example.com/food/contracts/orders/v1"
+	"github.com/Desu-php/food/contracts/correlation"
+	commands "github.com/Desu-php/food/contracts/delivery/commands/v1"
+	events "github.com/Desu-php/food/contracts/orders/v1"
 )
 
 var ErrEventConflict = errors.New("event identity or aggregate version conflict")

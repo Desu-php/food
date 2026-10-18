@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"example.com/food/catalog/internal/domain"
+	"github.com/Desu-php/food/services/catalog/internal/domain"
 )
 
 // RestaurantMenu is an application read model, independent of HTTP and SQL.

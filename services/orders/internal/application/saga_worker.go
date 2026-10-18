@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"example.com/food/orders/internal/domain"
+	"github.com/Desu-php/food/services/orders/internal/domain"
 )
 
 type SagaRepository interface {

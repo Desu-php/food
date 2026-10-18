@@ -1,4 +1,4 @@
-module example.com/food/platform
+module github.com/Desu-php/food/platform
 
 go 1.27.2
 

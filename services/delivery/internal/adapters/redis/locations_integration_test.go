@@ -9,9 +9,9 @@ import (
 
 	redis "github.com/redis/go-redis/v9"
 
-	"example.com/food/contracts/geo"
-	ids "example.com/food/contracts/orders/v1"
-	"example.com/food/delivery/internal/application"
+	"github.com/Desu-php/food/contracts/geo"
+	ids "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/services/delivery/internal/application"
 )
 
 func locationIndex(t *testing.T) (*Locations, *redis.Client) {

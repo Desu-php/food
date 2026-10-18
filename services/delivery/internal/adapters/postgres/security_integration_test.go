@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	httpadapter "example.com/food/delivery/internal/adapters/http"
-	"example.com/food/delivery/internal/application"
-	"example.com/food/delivery/internal/domain"
-	"example.com/food/platform/security"
+	"github.com/Desu-php/food/platform/security"
+	httpadapter "github.com/Desu-php/food/services/delivery/internal/adapters/http"
+	"github.com/Desu-php/food/services/delivery/internal/application"
+	"github.com/Desu-php/food/services/delivery/internal/domain"
 )
 
 func TestMappedCourierCannotCompleteForeignDelivery(t *testing.T) {

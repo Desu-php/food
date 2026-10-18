@@ -10,7 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"example.com/food/orders/internal/domain"
+	"github.com/Desu-php/food/services/orders/internal/domain"
 )
 
 var (

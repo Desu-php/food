@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"example.com/food/orders/internal/application"
-	"example.com/food/platform/security"
+	"github.com/Desu-php/food/platform/security"
+	"github.com/Desu-php/food/services/orders/internal/application"
 )
 
 func TestOIDCIdentityMappingAndOrderOwnership(t *testing.T) {

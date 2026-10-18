@@ -10,10 +10,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	httpadapter "example.com/food/delivery/internal/adapters/http"
-	"example.com/food/delivery/internal/adapters/kafka"
-	"example.com/food/delivery/internal/adapters/postgres"
-	"example.com/food/delivery/internal/application"
+	httpadapter "github.com/Desu-php/food/services/delivery/internal/adapters/http"
+	"github.com/Desu-php/food/services/delivery/internal/adapters/kafka"
+	"github.com/Desu-php/food/services/delivery/internal/adapters/postgres"
+	"github.com/Desu-php/food/services/delivery/internal/application"
 )
 
 const consumerSchemaCheck = `SELECT s.dispatch_blocked,p.event_id,c.message_id,r.command_version,s.preparation_started FROM processed_events p LEFT JOIN command_inbox c ON false LEFT JOIN delivery_requests r ON false LEFT JOIN order_streams s ON false LIMIT 0`

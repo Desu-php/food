@@ -12,9 +12,9 @@ import (
 	"strconv"
 	"time"
 
-	"example.com/food/catalog/internal/application"
-	"example.com/food/catalog/internal/domain"
-	"example.com/food/platform/security"
+	"github.com/Desu-php/food/platform/security"
+	"github.com/Desu-php/food/services/catalog/internal/application"
+	"github.com/Desu-php/food/services/catalog/internal/domain"
 )
 
 const maxBodyBytes = 64 << 10

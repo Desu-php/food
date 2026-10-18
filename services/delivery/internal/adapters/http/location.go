@@ -4,8 +4,8 @@ import (
 	"io"
 	"net/http"
 
-	"example.com/food/contracts/geo"
-	"example.com/food/delivery/internal/domain"
+	"github.com/Desu-php/food/contracts/geo"
+	"github.com/Desu-php/food/services/delivery/internal/domain"
 )
 
 func (h *handler) location(w http.ResponseWriter, r *http.Request) {

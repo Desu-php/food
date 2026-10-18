@@ -3,7 +3,7 @@ package httpadapter
 import (
 	"time"
 
-	"example.com/food/delivery/internal/domain"
+	"github.com/Desu-php/food/services/delivery/internal/domain"
 )
 
 type courierDTO struct {

@@ -9,10 +9,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"example.com/food/contracts/correlation"
-	commands "example.com/food/contracts/delivery/commands/v1"
-	"example.com/food/orders/internal/application"
-	"example.com/food/orders/internal/domain"
+	"github.com/Desu-php/food/contracts/correlation"
+	commands "github.com/Desu-php/food/contracts/delivery/commands/v1"
+	"github.com/Desu-php/food/services/orders/internal/application"
+	"github.com/Desu-php/food/services/orders/internal/domain"
 )
 
 const sagaColumns = `order_id,state,version,delivery_id,delivery_version,courier_id,command_id,command_type,command_sequence,attempts,deadline,next_attempt_at,reason,correlation_id,created_at,updated_at,cancel_reason,legacy_reconciliation,dispatch_deadline`

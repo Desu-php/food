@@ -11,11 +11,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
-	httpadapter "example.com/food/delivery/internal/adapters/http"
-	"example.com/food/delivery/internal/adapters/postgres"
-	redisadapter "example.com/food/delivery/internal/adapters/redis"
-	"example.com/food/delivery/internal/application"
-	"example.com/food/platform/security"
+	"github.com/Desu-php/food/platform/security"
+	httpadapter "github.com/Desu-php/food/services/delivery/internal/adapters/http"
+	"github.com/Desu-php/food/services/delivery/internal/adapters/postgres"
+	redisadapter "github.com/Desu-php/food/services/delivery/internal/adapters/redis"
+	"github.com/Desu-php/food/services/delivery/internal/application"
 )
 
 const schemaCheck = "SELECT d.latitude,d.longitude,d.dispatch_deadline,d.dispatch_attempts,d.id,d.order_id,d.version,d.order_version,d.ready,c.id,c.updated_at,d.preparation_started,p.delivery_id,p.id,e.event_id,i.event_id FROM deliveries d LEFT JOIN couriers c ON c.id=d.courier_id LEFT JOIN payment_confirmations p ON p.delivery_id=d.id LEFT JOIN outbox_events e ON e.aggregate_id=d.id LEFT JOIN processed_events i ON false LIMIT 0"

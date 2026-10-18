@@ -8,7 +8,7 @@ import (
 
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"example.com/food/orders/internal/application"
+	"github.com/Desu-php/food/services/orders/internal/application"
 )
 
 type Producer struct {

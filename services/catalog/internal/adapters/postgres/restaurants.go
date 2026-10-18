@@ -8,8 +8,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"example.com/food/catalog/internal/application"
-	"example.com/food/catalog/internal/domain"
+	"github.com/Desu-php/food/services/catalog/internal/application"
+	"github.com/Desu-php/food/services/catalog/internal/domain"
 )
 
 type Restaurants struct{ pool *pgxpool.Pool }

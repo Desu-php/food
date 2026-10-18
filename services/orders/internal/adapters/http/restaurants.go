@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"example.com/food/orders/internal/application"
-	"example.com/food/orders/internal/domain"
-	"example.com/food/platform/security"
+	"github.com/Desu-php/food/platform/security"
+	"github.com/Desu-php/food/services/orders/internal/application"
+	"github.com/Desu-php/food/services/orders/internal/domain"
 )
 
 func (h *handler) restaurantAction(w http.ResponseWriter, r *http.Request) {

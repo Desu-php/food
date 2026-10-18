@@ -9,8 +9,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	events "example.com/food/contracts/orders/v1"
-	"example.com/food/delivery/internal/application"
+	events "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/services/delivery/internal/application"
 )
 
 type Outbox struct{ pool *pgxpool.Pool }

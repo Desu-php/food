@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"example.com/food/catalog/internal/application"
-	"example.com/food/catalog/internal/domain"
+	"github.com/Desu-php/food/services/catalog/internal/application"
+	"github.com/Desu-php/food/services/catalog/internal/domain"
 )
 
 // Mutable menu data exists only in this HTTP test fake, never in production.

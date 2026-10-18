@@ -18,11 +18,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	events "example.com/food/contracts/orders/v1"
-	"example.com/food/orders/internal/adapters/catalog"
-	httpadapter "example.com/food/orders/internal/adapters/http"
-	"example.com/food/orders/internal/application"
-	"example.com/food/orders/internal/domain"
+	events "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/services/orders/internal/adapters/catalog"
+	httpadapter "github.com/Desu-php/food/services/orders/internal/adapters/http"
+	"github.com/Desu-php/food/services/orders/internal/application"
+	"github.com/Desu-php/food/services/orders/internal/domain"
 )
 
 func createPickup(t *testing.T, r *Orders, key string) domain.Order {

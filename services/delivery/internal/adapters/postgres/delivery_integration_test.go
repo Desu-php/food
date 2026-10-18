@@ -20,12 +20,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	commands "example.com/food/contracts/delivery/commands/v1"
-	deliveryevents "example.com/food/contracts/delivery/v1"
-	events "example.com/food/contracts/orders/v1"
-	httpadapter "example.com/food/delivery/internal/adapters/http"
-	"example.com/food/delivery/internal/application"
-	"example.com/food/delivery/internal/domain"
+	commands "github.com/Desu-php/food/contracts/delivery/commands/v1"
+	deliveryevents "github.com/Desu-php/food/contracts/delivery/v1"
+	events "github.com/Desu-php/food/contracts/orders/v1"
+	httpadapter "github.com/Desu-php/food/services/delivery/internal/adapters/http"
+	"github.com/Desu-php/food/services/delivery/internal/application"
+	"github.com/Desu-php/food/services/delivery/internal/domain"
 )
 
 func integrationPool(t *testing.T, migrations ...string) *pgxpool.Pool {

@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"example.com/food/platform/security"
+	"github.com/Desu-php/food/platform/security"
 )
 
 type Config struct {

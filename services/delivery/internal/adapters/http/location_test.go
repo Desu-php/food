@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"example.com/food/contracts/geo"
-	"example.com/food/delivery/internal/application"
-	"example.com/food/platform/security"
+	"github.com/Desu-php/food/contracts/geo"
+	"github.com/Desu-php/food/platform/security"
+	"github.com/Desu-php/food/services/delivery/internal/application"
 )
 
 type locationRepo struct {

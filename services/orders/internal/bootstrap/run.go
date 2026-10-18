@@ -10,11 +10,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"example.com/food/orders/internal/adapters/catalog"
-	httpadapter "example.com/food/orders/internal/adapters/http"
-	"example.com/food/orders/internal/adapters/postgres"
-	"example.com/food/orders/internal/application"
-	"example.com/food/platform/security"
+	"github.com/Desu-php/food/platform/security"
+	"github.com/Desu-php/food/services/orders/internal/adapters/catalog"
+	httpadapter "github.com/Desu-php/food/services/orders/internal/adapters/http"
+	"github.com/Desu-php/food/services/orders/internal/adapters/postgres"
+	"github.com/Desu-php/food/services/orders/internal/application"
 )
 
 const schemaCheck = "SELECT o.latitude,o.longitude,s.dispatch_deadline,o.id,o.version,o.customer_id,o.restaurant_id,o.status,o.courier_id,o.cancellation_requested,o.payment_method,o.payment_status,o.currency,o.subtotal_minor,o.created_at,o.updated_at,i.id,i.order_id,i.menu_item_id,i.name,i.quantity,i.unit_price_minor,i.total_price_minor,k.customer_id,k.key,k.request_hash,k.order_id,k.response,e.event_id,e.claim_token,e.lease_until,e.stream,s.order_id,s.next_attempt_at FROM orders o LEFT JOIN order_items i ON i.order_id=o.id LEFT JOIN idempotency_keys k ON k.order_id=o.id LEFT JOIN outbox_events e ON e.aggregate_id=o.id LEFT JOIN order_sagas s ON s.order_id=o.id LIMIT 0"

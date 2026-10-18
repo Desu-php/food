@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"example.com/food/catalog/internal/domain"
+	"github.com/Desu-php/food/services/catalog/internal/domain"
 )
 
 var ErrInvalidPagination = errors.New("limit must be between 1 and 100; offset must be non-negative")

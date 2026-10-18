@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"example.com/food/orders/internal/application"
-	"example.com/food/orders/internal/domain"
+	"github.com/Desu-php/food/services/orders/internal/application"
+	"github.com/Desu-php/food/services/orders/internal/domain"
 )
 
 // This small repository is only for transport tests. PostgreSQL concurrency and

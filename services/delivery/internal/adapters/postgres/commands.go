@@ -11,10 +11,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	commands "example.com/food/contracts/delivery/commands/v1"
-	events "example.com/food/contracts/delivery/v1"
-	"example.com/food/delivery/internal/application"
-	"example.com/food/delivery/internal/domain"
+	commands "github.com/Desu-php/food/contracts/delivery/commands/v1"
+	events "github.com/Desu-php/food/contracts/delivery/v1"
+	"github.com/Desu-php/food/services/delivery/internal/application"
+	"github.com/Desu-php/food/services/delivery/internal/domain"
 )
 
 func insertCommandResponse(ctx context.Context, tx pgx.Tx, d domain.Delivery, kind, cause, reason string) (string, error) {

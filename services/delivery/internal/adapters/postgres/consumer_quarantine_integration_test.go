@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	events "example.com/food/contracts/orders/v1"
-	"example.com/food/delivery/internal/application"
+	events "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/services/delivery/internal/application"
 )
 
 func TestConsumerQuarantineRestartReplayAndConcurrentFence(t *testing.T) {

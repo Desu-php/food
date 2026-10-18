@@ -10,8 +10,8 @@ import (
 
 	redis "github.com/redis/go-redis/v9"
 
-	"example.com/food/contracts/geo"
-	"example.com/food/delivery/internal/application"
+	"github.com/Desu-php/food/contracts/geo"
+	"github.com/Desu-php/food/services/delivery/internal/application"
 )
 
 type Locations struct {

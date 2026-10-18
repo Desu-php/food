@@ -2,7 +2,7 @@ package domain
 
 import (
 	"errors"
-	events "example.com/food/contracts/orders/v1"
+	events "github.com/Desu-php/food/contracts/orders/v1"
 )
 
 const Pending = "PENDING"

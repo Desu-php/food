@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	events "example.com/food/contracts/orders/v1"
-	"example.com/food/orders/internal/domain"
+	events "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/services/orders/internal/domain"
 )
 
 func TestPickupCreateAndIdempotency(t *testing.T) {

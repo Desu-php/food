@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	httpadapter "example.com/food/catalog/internal/adapters/http"
-	"example.com/food/catalog/internal/application"
-	"example.com/food/catalog/internal/domain"
-	"example.com/food/platform/security"
+	"github.com/Desu-php/food/platform/security"
+	httpadapter "github.com/Desu-php/food/services/catalog/internal/adapters/http"
+	"github.com/Desu-php/food/services/catalog/internal/application"
+	"github.com/Desu-php/food/services/catalog/internal/domain"
 )
 
 func TestAuthorizedCoordinatesAndQuoteSnapshot(t *testing.T) {

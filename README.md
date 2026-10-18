@@ -66,6 +66,12 @@ docs/architecture.md      решения и границы слоёв
 monorepo. Корневого go.mod нет. Поэтому из корня используйте
 `go test ./platform/... ./contracts/... ./services/catalog/... ./services/orders/... ./services/notifications/... ./services/delivery/...`, а не `go test ./...`.
 
+Пути Go-модулей соответствуют репозиторию `github.com/Desu-php/food`:
+общие модули — `github.com/Desu-php/food/contracts` и
+`github.com/Desu-php/food/platform`, сервисы —
+`github.com/Desu-php/food/services/<service>`. Локальные `replace` в сервисных
+`go.mod` позволяют собирать сервисы отдельно с `GOWORK=off` из этого checkout.
+
 ## Запуск через Docker Compose
 
 Требуются Docker Engine и Compose v2. Для WSL включите интеграцию дистрибутива в

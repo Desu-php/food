@@ -12,9 +12,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"example.com/food/contracts/geo"
-	"example.com/food/orders/internal/application"
-	"example.com/food/orders/internal/domain"
+	"github.com/Desu-php/food/contracts/geo"
+	"github.com/Desu-php/food/services/orders/internal/application"
+	"github.com/Desu-php/food/services/orders/internal/domain"
 )
 
 type Client struct {

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	events "example.com/food/contracts/orders/v1"
-	"example.com/food/notifications/internal/domain"
+	events "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/services/notifications/internal/domain"
 )
 
 type sourceStub struct {

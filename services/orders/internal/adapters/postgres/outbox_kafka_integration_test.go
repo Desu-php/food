@@ -12,9 +12,9 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
 
-	events "example.com/food/contracts/orders/v1"
-	"example.com/food/orders/internal/adapters/kafka"
-	"example.com/food/orders/internal/application"
+	events "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/services/orders/internal/adapters/kafka"
+	"github.com/Desu-php/food/services/orders/internal/application"
 )
 
 func TestOutboxKafkaAcknowledgementCrashAndRecovery(t *testing.T) {

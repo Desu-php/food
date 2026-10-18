@@ -7,10 +7,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	events "example.com/food/contracts/delivery/v1"
-	ids "example.com/food/contracts/orders/v1"
-	"example.com/food/delivery/internal/application"
-	"example.com/food/delivery/internal/domain"
+	events "github.com/Desu-php/food/contracts/delivery/v1"
+	ids "github.com/Desu-php/food/contracts/orders/v1"
+	"github.com/Desu-php/food/services/delivery/internal/application"
+	"github.com/Desu-php/food/services/delivery/internal/domain"
 )
 
 func (r *Repository) CourierAvailable(ctx context.Context, id int64) error {

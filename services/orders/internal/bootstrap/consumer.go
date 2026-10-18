@@ -10,10 +10,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	httpadapter "example.com/food/orders/internal/adapters/http"
-	"example.com/food/orders/internal/adapters/kafka"
-	"example.com/food/orders/internal/adapters/postgres"
-	"example.com/food/orders/internal/application"
+	httpadapter "github.com/Desu-php/food/services/orders/internal/adapters/http"
+	"github.com/Desu-php/food/services/orders/internal/adapters/kafka"
+	"github.com/Desu-php/food/services/orders/internal/adapters/postgres"
+	"github.com/Desu-php/food/services/orders/internal/application"
 )
 
 const consumerSchemaCheck = `SELECT o.latitude,o.longitude,s.dispatch_deadline,i.event_id,s.order_id,s.delivery_version,o.courier_id FROM delivery_inbox i LEFT JOIN order_sagas s ON false LEFT JOIN orders o ON false LIMIT 0`

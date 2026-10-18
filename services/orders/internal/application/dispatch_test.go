@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	delivery "example.com/food/contracts/delivery/v1"
-	"example.com/food/contracts/geo"
-	"example.com/food/orders/internal/domain"
+	delivery "github.com/Desu-php/food/contracts/delivery/v1"
+	"github.com/Desu-php/food/contracts/geo"
+	"github.com/Desu-php/food/services/orders/internal/domain"
 )
 
 func TestDispatchSnapshotDeadlineAndSagaGate(t *testing.T) {

@@ -1,8 +1,8 @@
-module example.com/food/delivery
+module github.com/Desu-php/food/services/delivery
 
 go 1.27.2
 
-replace example.com/food/contracts => ../../contracts
+replace github.com/Desu-php/food/contracts => ../../contracts
 
 require (
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
@@ -21,12 +21,12 @@ require (
 )
 
 require (
-	example.com/food/contracts v0.0.0
-	example.com/food/platform v0.0.0
+	github.com/Desu-php/food/contracts v0.0.0
+	github.com/Desu-php/food/platform v0.0.0
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/twmb/franz-go v1.22.2
 	github.com/twmb/franz-go/pkg/kmsg v1.15.0
 )
 
-replace example.com/food/platform => ../../platform
+replace github.com/Desu-php/food/platform => ../../platform

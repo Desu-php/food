@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	"example.com/food/catalog/internal/application"
-	"example.com/food/catalog/internal/domain"
-	"example.com/food/contracts/geo"
+	"github.com/Desu-php/food/contracts/geo"
+	"github.com/Desu-php/food/services/catalog/internal/application"
+	"github.com/Desu-php/food/services/catalog/internal/domain"
 )
 
 // NewInternalHandler must be served on a separate, private listener. Public

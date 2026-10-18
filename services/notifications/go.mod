@@ -1,9 +1,9 @@
-module example.com/food/notifications
+module github.com/Desu-php/food/services/notifications
 
 go 1.27.2
 
 require (
-	example.com/food/contracts v0.0.0
+	github.com/Desu-php/food/contracts v0.0.0
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/twmb/franz-go v1.22.2
 	github.com/twmb/franz-go/pkg/kmsg v1.15.0
@@ -20,4 +20,4 @@ require (
 	golang.org/x/text v0.24.0 // indirect
 )
 
-replace example.com/food/contracts => ../../contracts
+replace github.com/Desu-php/food/contracts => ../../contracts

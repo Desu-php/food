@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"example.com/food/orders/internal/application"
+	"github.com/Desu-php/food/services/orders/internal/application"
 )
 
 func TestQuoteHTTP(t *testing.T) {
@@ -83,7 +83,7 @@ func TestQuoteTimeoutAndCancellation(t *testing.T) {
 	}
 }
 func TestClientConfiguration(t *testing.T) {
-	for _, url := range []string{"", ":bad", "ftp://example.com", "http://user:secret@localhost", "http://localhost/path", "http://localhost?token=secret"} {
+	for _, url := range []string{"", ":bad", "ftp://localhost", "http://user:secret@localhost", "http://localhost/path", "http://localhost?token=secret"} {
 		if _, err := NewClient(url, time.Second); err == nil {
 			t.Fatalf("accepted %q", url)
 		}
