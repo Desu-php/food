@@ -3,8 +3,8 @@ package application
 import (
 	"context"
 
-	"example.com/food/contracts/geo"
-	"example.com/food/delivery/internal/domain"
+	"github.com/Desu-php/food/contracts/geo"
+	"github.com/Desu-php/food/services/delivery/internal/domain"
 )
 
 func (s *Delivery) WithDispatch(d *Dispatch) *Delivery { s.automatic = d; return s }
