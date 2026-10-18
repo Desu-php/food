@@ -99,6 +99,11 @@ func (r *Repository) ProcessOrder(ctx context.Context, e events.Event) error {
 				return err
 			}
 		}
+		if e.EventType == events.OrderCancellationRequested || e.EventType == events.OrderCancelled || e.EventType == events.OrderRejected {
+			if err = cancelOffers(ctx, tx, d.ID); err != nil {
+				return err
+			}
+		}
 		d.OrderVersion = max(d.OrderVersion, e.AggregateVersion)
 		if err = saveDelivery(ctx, tx, d); err != nil {
 			return err

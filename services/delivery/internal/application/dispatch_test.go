@@ -29,7 +29,7 @@ func (r *dispatchRepo) FinishDispatch(_ context.Context, _ DispatchClaim, _ Disp
 	r.stop = stop
 	return nil
 }
-func (r *dispatchRepo) AssignDispatch(context.Context, DispatchClaim, []Candidate, time.Duration) (bool, error) {
+func (r *dispatchRepo) OfferDispatch(context.Context, DispatchClaim, []Candidate, time.Duration) (bool, error) {
 	r.attempted = true
 	return r.result, r.assignErr
 }
@@ -108,7 +108,7 @@ func TestDispatchRecordsAssignmentFailure(t *testing.T) {
 	deadline := time.Now().Add(time.Minute)
 	r := &dispatchRepo{found: true, assignErr: failure, claim: DispatchClaim{Delivery: domain.Delivery{RestaurantLocation: &geo.Point{}, DispatchDeadline: &deadline}}}
 	worker := NewDispatch(r, &dispatchLocations{}, DefaultDispatchConfig())
-	if found, err := worker.Step(context.Background()); !found || !errors.Is(err, failure) || r.finishReason != "assignment_failed" {
+	if found, err := worker.Step(context.Background()); !found || !errors.Is(err, failure) || r.finishReason != "offer_creation_failed" {
 		t.Fatal(found, err, r.finishReason)
 	}
 }

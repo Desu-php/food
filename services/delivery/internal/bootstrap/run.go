@@ -18,7 +18,7 @@ import (
 	"github.com/Desu-php/food/services/delivery/internal/application"
 )
 
-const schemaCheck = "SELECT d.latitude,d.longitude,d.dispatch_deadline,d.dispatch_attempts,d.id,d.order_id,d.version,d.order_version,d.ready,c.id,c.updated_at,d.preparation_started,p.delivery_id,p.id,e.event_id,i.event_id FROM deliveries d LEFT JOIN couriers c ON c.id=d.courier_id LEFT JOIN payment_confirmations p ON p.delivery_id=d.id LEFT JOIN outbox_events e ON e.aggregate_id=d.id LEFT JOIN processed_events i ON false LIMIT 0"
+const schemaCheck = "SELECT o.expires_at,d.latitude,d.longitude,d.dispatch_deadline,d.dispatch_attempts,d.id,d.order_id,d.version,d.order_version,d.ready,c.id,c.updated_at,d.preparation_started,p.delivery_id,p.id,e.event_id,i.event_id FROM deliveries d LEFT JOIN couriers c ON c.id=d.courier_id LEFT JOIN payment_confirmations p ON p.delivery_id=d.id LEFT JOIN outbox_events e ON e.aggregate_id=d.id LEFT JOIN processed_events i ON false LEFT JOIN courier_offers o ON o.delivery_id=d.id LIMIT 0"
 
 func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 	cfg.DevAuthEnabled = cfg.Authentication.DevEnabled
@@ -68,15 +68,18 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 	defer locationsClient.Close()
 	locations := redisadapter.NewLocations(locationsClient, "{delivery-dispatch}", cfg.LocationTTL, cfg.LocationInterval)
 	dispatch := application.NewDispatch(repo, locations, cfg.Dispatch)
-	service := application.NewDelivery(repo, cfg.DispatcherIDs).WithDispatch(dispatch)
+	offers := application.NewOffers(repo)
+	service := application.NewDelivery(repo, cfg.DispatcherIDs).WithDispatch(dispatch).WithOffers(offers)
 	workerCtx, stopWorker := context.WithCancel(ctx)
+	expiryDone := make(chan struct{})
+	go func() { defer close(expiryDone); offers.RunExpiry(workerCtx, logger) }()
 	workerDone := make(chan struct{})
 	if cfg.DispatchEnabled {
 		go func() { defer close(workerDone); dispatch.Run(workerCtx, logger) }()
 	} else {
 		close(workerDone)
 	}
-	defer func() { stopWorker(); <-workerDone }()
+	defer func() { stopWorker(); <-workerDone; <-expiryDone }()
 
 	ready := func(ctx context.Context) error { _, err := pool.Exec(ctx, schemaCheck); return err }
 	if cfg.DevAuthEnabled {

@@ -15,12 +15,15 @@ flowchart LR
     API -->|rate limit + GEOADD + freshness| Redis[(Redis GEO)]
     Worker[Dispatch Worker в Delivery] -->|короткая claim lease| DP
     Worker -->|GEOSEARCH: distance ASC, courier ID ASC| Redis
-    Worker -->|проверки + assignment + Outbox в транзакции| DP
+    Worker -->|проверки + PENDING CourierOffer в транзакции| DP
     Dispatcher[Диспетчер / OIDC permission] -->|ручное назначение| API
-    API -->|тот же domain.Assign и SQL locks| DP
+    API -->|accept offer или manual: domain.Assign + SQL locks| DP
     DP -->|CourierAssigned / Outbox| Kafka
     Kafka -->|Orders Inbox → существующая Saga| Gate[Разрешение приготовления]
 ```
+
+С этапа 11 автоматический подбор выдаёт предложение с подтверждением: [актуальный
+поток и API CourierOffer](courier-offers.md). Ручное назначение сохраняется.
 
 ## Координаты и API
 
@@ -77,12 +80,15 @@ OFFLINE/BUSY могут кратковременно оставаться в и�
    PENDING_ASSIGNMENT, отсутствие приготовления, cancellation fence и deadline.
    В порядке расстояния берётся доступный кандидат через courier row lock с
    SKIP LOCKED; проверяются TTL результата и cooldown в PostgreSQL.
-4. Общий `Delivery.Assign` меняет состояние; прежний persistence-механизм ставит
-   курьеру BUSY и пишет CourierAssigned в Outbox в той же транзакции. Существующий
-   partial unique index запрещает две активные доставки одному курьеру.
+4. Этап 11: SQL-фаза сохраняет PENDING CourierOffer на min(30s, остаток deadline),
+   освобождая lease. Назначение ждёт HTTP-принятия курьером; оно вызывает прежний
+   `Delivery.Assign`, ставит BUSY и пишет CourierAssigned Outbox атомарно.
+   Partial unique indexes защищают резервации и активные доставки.
+   [Courier Offer & Acceptance](courier-offers.md) описывает TTL и гонки.
 
-Ручное назначение блокирует те же строки и использует тот же доменный переход.
-Побеждает первый успешный commit; проигравшая попытка не пишет событие. Worker
+Принятие предложения и ручное назначение блокируют те же строки и используют
+тот же доменный переход. Побеждает первый успешный commit назначения; проигравшая
+попытка не пишет событие. Ручное назначение отменяет PENDING своей доставки. Worker
 повторяет работу по состоянию PostgreSQL, а не по памяти. При потере ответа после
 commit старый lease не создаёт повторный event. После падения worker просроченную
 lease получает другая реплика; UUID защищает от прежнего владельца. После ожидания
@@ -140,7 +146,7 @@ PICKUP не создаёт Delivery, команд, lease или записи dis
 `attempts_exhausted:<reason>`, `manual_assignment_required_after_preparation`.
 `searching` означает текущую lease; её истечение позволяет восстановить работу
 в пределах бюджета. Исчерпавшая бюджет lease после падения помечается
-`attempts_exhausted:lease_expired`; SQL-ошибка назначения — `assignment_failed`.
+`attempts_exhausted:lease_expired`; SQL-ошибка создания предложения — `offer_creation_failed`.
 После истечения окна оператор возобновляет **существующую** Saga через прежний
 `POST /restaurants/{restaurant_id}/orders/{id}/saga/retry`. Для ожидающего заказа до
 приготовления она выдаёт новый CreateDelivery с новым окном; Delivery сохраняет

@@ -35,6 +35,9 @@ func NewHandler(service *application.Delivery, ready func(context.Context) error
 		}
 		writeJSON(w, 200, map[string]string{"status": "ok"})
 	})
+	mux.HandleFunc("GET /couriers/me/offers", h.offers)
+	mux.HandleFunc("POST /courier-offers/{id}/accept", h.respondOffer)
+	mux.HandleFunc("POST /courier-offers/{id}/decline", h.respondOffer)
 	mux.HandleFunc("POST /couriers/me/location", h.location)
 	mux.HandleFunc("POST /deliveries/{id}/dispatch/retry", h.retryDispatch)
 	mux.HandleFunc("POST /couriers", h.createCourier)
@@ -46,7 +49,7 @@ func NewHandler(service *application.Delivery, ready func(context.Context) error
 	mux.HandleFunc("POST /deliveries/{id}/assign", h.assign)
 	mux.HandleFunc("POST /deliveries/{id}/pickup", h.pickup)
 	mux.HandleFunc("POST /deliveries/{id}/complete", h.complete)
-	for _, route := range []struct{ pattern, allow string }{{"/couriers/me/location", "POST"}, {"/deliveries/{id}/dispatch/retry", "POST"}, {"/health", "GET, HEAD"}, {"/ready", "GET, HEAD"}, {"/couriers", "GET, HEAD, POST"}, {"/couriers/{id}/status", "POST"}, {"/deliveries", "GET, HEAD"}, {"/deliveries/{id}", "GET, HEAD"}, {"/deliveries/{id}/assign", "POST"}, {"/deliveries/{id}/decline", "POST"}, {"/deliveries/{id}/pickup", "POST"}, {"/deliveries/{id}/complete", "POST"}} {
+	for _, route := range []struct{ pattern, allow string }{{"/couriers/me/offers", "GET, HEAD"}, {"/courier-offers/{id}/accept", "POST"}, {"/courier-offers/{id}/decline", "POST"}, {"/couriers/me/location", "POST"}, {"/deliveries/{id}/dispatch/retry", "POST"}, {"/health", "GET, HEAD"}, {"/ready", "GET, HEAD"}, {"/couriers", "GET, HEAD, POST"}, {"/couriers/{id}/status", "POST"}, {"/deliveries", "GET, HEAD"}, {"/deliveries/{id}", "GET, HEAD"}, {"/deliveries/{id}/assign", "POST"}, {"/deliveries/{id}/decline", "POST"}, {"/deliveries/{id}/pickup", "POST"}, {"/deliveries/{id}/complete", "POST"}} {
 		mux.HandleFunc(route.pattern, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Allow", route.allow)
 			writeJSON(w, 405, map[string]string{"error": "method not allowed"})

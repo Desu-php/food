@@ -54,7 +54,7 @@ without implementing it.
 ## Current scope
 
 Production Foundation, Catalog, Orders, Notifications, Restaurant Order
-Fulfillment Saga orchestration, PICKUP and Delivery with operational POS collection, Security & Reliability Hardening, Automatic Courier Dispatch + Redis GEO. Future modules require
+Fulfillment Saga orchestration, PICKUP and Delivery with operational POS collection, Security & Reliability Hardening, Automatic Courier Dispatch + Redis GEO, Courier Offer & Acceptance. Future modules require
 separate tasks. The user's current explicit instructions take precedence over this file.
 
 ## MVP payment and fulfillment decision
@@ -196,3 +196,35 @@ See docs/automatic-dispatch.md and docs/adr/0007-automatic-dispatch-and-redis-ge
 Stage 10 explicitly permits Redis, GPS updates and automatic courier selection;
 it supersedes the Stage 8 prohibition only for this authorized functionality.
 No road routing, traffic ETA, online payments or multi-order courier assignment.
+
+
+## Stage 11: Courier Offer & Acceptance
+
+Automatic dispatch creates a persisted CourierOffer before assignment. Delivery
+owns offers and the separate expiry worker inside its API process. Preserve the
+existing lease, Redis GEO candidate lookup, retry budget, cooldown and Saga window;
+never wait for a courier or Redis inside a SQL transaction. Offer TTL is 30 seconds
+capped by the Saga dispatch deadline. PostgreSQL partial unique indexes permit
+only one PENDING offer per delivery and per courier. Persist terminal decisions
+and RespondedAt; do not delete history or create offers for historical assignments.
+
+Accept locks Delivery, Offer, Courier and checks PostgreSQL time after lock waits.
+ACCEPTED, domain.Assign, BUSY and the existing CourierAssigned Outbox commit together.
+Same-decision retries return the saved result without another assignment/event.
+Decline/expiry persist the existing per-delivery/courier cooldown and resume bounded
+search. Expiry must run without Redis and even when automatic search is disabled;
+recover due offers from PostgreSQL after restart. Never accept an expired,
+cancelled, foreign or unavailable courier's offer. Only server-mapped courier
+principals can list/respond to their own offers; POST bodies stay empty.
+
+Manual dispatcher assignment cancels the PENDING offer of its own delivery
+atomically. A courier reserved for another delivery causes a conflict rather than
+silently cancelling that other reservation. Cancellation commands/events cancel
+pending offers under the delivery lock. Creation/assignment cooperate with the
+existing consumer quarantine fence. Orders cooking remains gated on the original
+CourierAssigned event after acceptance or authorized manual assignment. PICKUP
+never creates or interacts with offers. No new event contracts, topics, Dispatch
+service, customer GPS tracking, maps or road ETA are introduced.
+
+See docs/courier-offers.md and docs/adr/0008-courier-offer-and-acceptance.md.
+Run scripts/check.sh, scripts/test-integration.sh and scripts/verify-offers.py.

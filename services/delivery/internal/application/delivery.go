@@ -19,6 +19,7 @@ type Repository interface {
 	Change(context.Context, int64, string, func(*domain.Delivery) error) (domain.Delivery, error)
 }
 type Delivery struct {
+	offers      *Offers
 	automatic   *Dispatch
 	repo        Repository
 	dispatchers []int64

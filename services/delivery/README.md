@@ -213,3 +213,16 @@ CourierAssigned Outbox. PICKUP исключён. Слои application/domain н�
 
 [API, архитектура, конфигурация и rollout](../../docs/automatic-dispatch.md),
 [ADR 0007](../../docs/adr/0007-automatic-dispatch-and-redis-geo.md).
+
+
+## Этап 11: Courier Offer & Acceptance
+
+Автодиспетч создаёт PENDING-предложение на 30 секунд в PostgreSQL. Курьер читает
+`GET /couriers/me/offers` и отвечает через `POST /courier-offers/{id}/accept` или
+`/decline` с пустым телом. Принятие, назначение, BUSY и CourierAssigned Outbox
+атомарны. Отдельный expiry worker работает без Redis и при выключенном поиске;
+partial unique indexes и общие row locks защищают от двойных резерваций/назначений.
+Ручное назначение отменяет предложение своей доставки. Нужна миграция 000006.
+
+[TTL, API, конкурентность, Saga, запуск и проверки](../../docs/courier-offers.md),
+[ADR 0008](../../docs/adr/0008-courier-offer-and-acceptance.md).

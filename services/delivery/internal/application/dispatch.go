@@ -43,7 +43,7 @@ func DefaultDispatchConfig() DispatchConfig {
 
 type DispatchRepository interface {
 	ClaimDispatch(context.Context, DispatchConfig) (DispatchClaim, bool, error)
-	AssignDispatch(context.Context, DispatchClaim, []Candidate, time.Duration) (bool, error)
+	OfferDispatch(context.Context, DispatchClaim, []Candidate, time.Duration) (bool, error)
 	FinishDispatch(context.Context, DispatchClaim, DispatchConfig, string, bool) error
 	RetryDispatch(context.Context, int64) error
 	CourierAvailable(context.Context, int64) error
@@ -101,12 +101,12 @@ func (s *Dispatch) Step(ctx context.Context) (bool, error) {
 		if searchErr != nil {
 			reason = "redis_unavailable"
 		} else {
-			assigned, assignErr := s.repo.AssignDispatch(ctx, claim, candidates, s.cfg.Cooldown)
-			if assignErr != nil {
-				finishErr := s.repo.FinishDispatch(ctx, claim, s.cfg, "assignment_failed", false)
-				return true, errors.Join(assignErr, finishErr)
+			offered, offerErr := s.repo.OfferDispatch(ctx, claim, candidates, s.cfg.Cooldown)
+			if offerErr != nil {
+				finishErr := s.repo.FinishDispatch(ctx, claim, s.cfg, "offer_creation_failed", false)
+				return true, errors.Join(offerErr, finishErr)
 			}
-			if assigned {
+			if offered {
 				return true, nil
 			}
 		}

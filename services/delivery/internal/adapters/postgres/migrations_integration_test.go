@@ -45,6 +45,17 @@ func TestDeliverySagaMigrationKeepsLegacyPOS(t *testing.T) {
 	if _, err = pool.Exec(ctx, string(dispatchSQL)); err != nil {
 		t.Fatal(err)
 	}
+	offerSQL, err := os.ReadFile("../../../migrations/000006_courier_offers.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, string(offerSQL)); err != nil {
+		t.Fatal(err)
+	}
+	var offers int
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM courier_offers`).Scan(&offers); err != nil || offers != 0 {
+		t.Fatal("historical assignments invented offers", offers, err)
+	}
 	d, err := NewRepository(pool).Get(ctx, 0, 1)
 	if err != nil || d.Confirmation == nil || d.Confirmation.ID <= 0 || d.Confirmation.ReceiptReference != "legacy-receipt" || d.Confirmation.AmountMinor != 25000 || !d.PreparationStarted {
 		t.Fatal(d, err)

@@ -24,7 +24,7 @@ func TestPickupEventsHaveNoDeliveryEffects(t *testing.T) {
 			t.Fatal("duplicate", err)
 		}
 	}
-	for _, table := range []string{"deliveries", "outbox_events", "payment_confirmations", "delivery_requests"} {
+	for _, table := range []string{"deliveries", "outbox_events", "payment_confirmations", "delivery_requests", "courier_offers", "dispatch_declines"} {
 		var n int
 		if err := pool.QueryRow(ctx, "SELECT count(*) FROM "+table).Scan(&n); err != nil || n != 0 {
 			t.Fatal(table, n, err)

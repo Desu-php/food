@@ -79,7 +79,7 @@ func TestConcurrentDispatchAndManualAssignment(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				<-start
-				_, e := r.AssignDispatch(ctx, claim1, candidates(c.ID), cfg.Cooldown)
+				_, e := r.OfferDispatch(ctx, claim1, candidates(c.ID), cfg.Cooldown)
 				errs <- e
 			}()
 			go func() {
@@ -92,7 +92,7 @@ func TestConcurrentDispatchAndManualAssignment(t *testing.T) {
 					}
 					errs <- e
 				} else {
-					_, e := r.AssignDispatch(ctx, claim2, candidates(c.ID), cfg.Cooldown)
+					_, e := r.OfferDispatch(ctx, claim2, candidates(c.ID), cfg.Cooldown)
 					errs <- e
 				}
 			}()
@@ -104,6 +104,15 @@ func TestConcurrentDispatchAndManualAssignment(t *testing.T) {
 					t.Fatal(e)
 				}
 			}
+			if !manual {
+				offers, e := r.Offers(ctx, c.ID)
+				if e != nil || len(offers) != 1 {
+					t.Fatal(offers, e)
+				}
+				if _, e = r.RespondOffer(ctx, c.ID, offers[0].ID, true); e != nil {
+					t.Fatal(e)
+				}
+			}
 			var assigned, outbox int
 			if err = pool.QueryRow(ctx, `SELECT count(*) FROM deliveries WHERE courier_id=$1 AND status='ASSIGNED'`, c.ID).Scan(&assigned); err != nil || assigned != 1 {
 				t.Fatal(assigned, err)
@@ -112,7 +121,7 @@ func TestConcurrentDispatchAndManualAssignment(t *testing.T) {
 				t.Fatal(outbox, err)
 			}
 			// Retrying an old lease cannot add another event or assign the second job.
-			if _, err = r.AssignDispatch(ctx, claim1, candidates(c.ID), cfg.Cooldown); err != nil {
+			if _, err = r.OfferDispatch(ctx, claim1, candidates(c.ID), cfg.Cooldown); err != nil {
 				t.Fatal(err)
 			}
 			_ = d2
@@ -141,10 +150,14 @@ func TestDispatchCooldownStatusDeadlineAndCancellation(t *testing.T) {
 	if err != nil || !ok || claim.Delivery.ID != d.ID {
 		t.Fatal(claim, err)
 	}
-	if assigned, err := r.AssignDispatch(ctx, claim, candidates(c1.ID, c2.ID, c3.ID), cfg.Cooldown); err != nil || !assigned {
+	if assigned, err := r.OfferDispatch(ctx, claim, candidates(c1.ID, c2.ID, c3.ID), cfg.Cooldown); err != nil || !assigned {
 		t.Fatal(assigned, err)
 	}
-	if _, err := s.Decline(ctx, c3.ID, d.ID); err != nil {
+	offers, err := r.Offers(ctx, c3.ID)
+	if err != nil || len(offers) != 1 {
+		t.Fatal(offers, err)
+	}
+	if _, err := r.RespondOffer(ctx, c3.ID, offers[0].ID, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.SetAvailability(ctx, c1.ID, c1.ID, domain.Available); err != nil {
@@ -154,8 +167,15 @@ func TestDispatchCooldownStatusDeadlineAndCancellation(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatal(err)
 	}
-	if assigned, err := r.AssignDispatch(ctx, claim, candidates(c3.ID, c1.ID), cfg.Cooldown); err != nil || !assigned {
+	if assigned, err := r.OfferDispatch(ctx, claim, candidates(c3.ID, c1.ID), cfg.Cooldown); err != nil || !assigned {
 		t.Fatal(assigned, err)
+	}
+	offers, err = r.Offers(ctx, c1.ID)
+	if err != nil || len(offers) != 1 {
+		t.Fatal(offers, err)
+	}
+	if _, err = r.RespondOffer(ctx, c1.ID, offers[0].ID, true); err != nil {
+		t.Fatal(err)
 	}
 	got, err := r.Get(ctx, 0, d.ID)
 	if err != nil || got.CourierID != c1.ID {
@@ -169,7 +189,7 @@ func TestDispatchCooldownStatusDeadlineAndCancellation(t *testing.T) {
 	}()); err != nil {
 		t.Fatal(err)
 	}
-	if assigned, err := r.AssignDispatch(ctx, claim, candidates(c3.ID), cfg.Cooldown); err != nil || assigned {
+	if assigned, err := r.OfferDispatch(ctx, claim, candidates(c3.ID), cfg.Cooldown); err != nil || assigned {
 		t.Fatal(assigned, err)
 	}
 	if _, found, err := r.ClaimDispatch(ctx, cfg); err != nil || found {
@@ -183,13 +203,13 @@ func TestDispatchCooldownStatusDeadlineAndCancellation(t *testing.T) {
 	}
 	stale := candidates(c3.ID)
 	stale[0].ExpiresAt = time.Now().Add(-time.Second)
-	if assigned, err := r.AssignDispatch(ctx, claim, stale, cfg.Cooldown); err != nil || assigned {
+	if assigned, err := r.OfferDispatch(ctx, claim, stale, cfg.Cooldown); err != nil || assigned {
 		t.Fatal(assigned, err)
 	}
 	if _, err = pool.Exec(ctx, `UPDATE deliveries SET dispatch_deadline=now()-interval '1 second' WHERE id=$1`, d.ID); err != nil {
 		t.Fatal(err)
 	}
-	if assigned, err := r.AssignDispatch(ctx, claim, candidates(c3.ID), cfg.Cooldown); err != nil || assigned {
+	if assigned, err := r.OfferDispatch(ctx, claim, candidates(c3.ID), cfg.Cooldown); err != nil || assigned {
 		t.Fatal(assigned, err)
 	}
 }
@@ -215,10 +235,10 @@ func TestDispatchLeaseRecoveryAndStaleOwner(t *testing.T) {
 	if err != nil || !found || current.Token == old.Token {
 		t.Fatal(current, found, err)
 	}
-	if assigned, err := r.AssignDispatch(ctx, old, candidates(c.ID), cfg.Cooldown); err != nil || assigned {
+	if assigned, err := r.OfferDispatch(ctx, old, candidates(c.ID), cfg.Cooldown); err != nil || assigned {
 		t.Fatal(assigned, err)
 	}
-	if assigned, err := r.AssignDispatch(ctx, current, candidates(c.ID), cfg.Cooldown); err != nil || !assigned {
+	if assigned, err := r.OfferDispatch(ctx, current, candidates(c.ID), cfg.Cooldown); err != nil || !assigned {
 		t.Fatal(assigned, err)
 	}
 }
@@ -255,6 +275,13 @@ func TestDispatchRedisAndPostgres(t *testing.T) {
 	}
 	if found, err := worker.Step(ctx); err != nil || !found {
 		t.Fatal(found, err)
+	}
+	offers, err := r.Offers(ctx, c2.ID)
+	if err != nil || len(offers) != 1 {
+		t.Fatal(offers, err)
+	}
+	if _, err = r.RespondOffer(ctx, c2.ID, offers[0].ID, true); err != nil {
+		t.Fatal(err)
 	}
 	got, err := r.Get(ctx, 0, d.ID)
 	if err != nil || got.CourierID != c2.ID {
@@ -327,7 +354,7 @@ func TestDispatchCancellationEventFenceAndHistoricalManualFallback(t *testing.T)
 			t.Fatal(err)
 		}
 	}
-	if assigned, err := r.AssignDispatch(ctx, claim, candidates(c.ID), cfg.Cooldown); err != nil || assigned {
+	if assigned, err := r.OfferDispatch(ctx, claim, candidates(c.ID), cfg.Cooldown); err != nil || assigned {
 		t.Fatal(assigned, err)
 	}
 	if _, found, err := r.ClaimDispatch(ctx, cfg); err != nil || found {
@@ -389,7 +416,7 @@ func TestDispatchRespectsConsumerQuarantine(t *testing.T) {
 	if _, err = pool.Exec(ctx, `INSERT INTO consumer_quarantine(topic,partition,offset_value,message_key,body,reason,attempts) VALUES('delivery.commands.v1',0,1,''::bytea,''::bytea,'unsupported_contract',1)`); err != nil {
 		t.Fatal(err)
 	}
-	if assigned, err := r.AssignDispatch(ctx, claim, candidates(c.ID), cfg.Cooldown); err != nil || assigned {
+	if assigned, err := r.OfferDispatch(ctx, claim, candidates(c.ID), cfg.Cooldown); err != nil || assigned {
 		t.Fatal(assigned, err)
 	}
 	if _, found, err = r.ClaimDispatch(ctx, cfg); err != nil || found {
@@ -399,7 +426,7 @@ func TestDispatchRespectsConsumerQuarantine(t *testing.T) {
 	if _, err = pool.Exec(ctx, `UPDATE consumer_quarantine SET resolved_at=now()`); err != nil {
 		t.Fatal(err)
 	}
-	if assigned, err := r.AssignDispatch(ctx, claim, candidates(c.ID), cfg.Cooldown); err != nil || !assigned {
+	if assigned, err := r.OfferDispatch(ctx, claim, candidates(c.ID), cfg.Cooldown); err != nil || !assigned {
 		t.Fatal(assigned, err)
 	}
 }
@@ -429,6 +456,17 @@ func TestTwoWorkersRunStepsConcurrently(t *testing.T) {
 	}
 	close(start)
 	wg.Wait()
+	offers, err := r.Offers(ctx, c.ID)
+	if err != nil || len(offers) != 1 {
+		t.Fatal(offers, err)
+	}
+	var before int
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM outbox_events WHERE event_type='CourierAssigned'`).Scan(&before); err != nil || before != 0 {
+		t.Fatal(before, err)
+	}
+	if _, err = r.RespondOffer(ctx, c.ID, offers[0].ID, true); err != nil {
+		t.Fatal(err)
+	}
 	var n int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM deliveries WHERE status='ASSIGNED'`).Scan(&n); err != nil || n != 1 {
 		t.Fatal(n, err)

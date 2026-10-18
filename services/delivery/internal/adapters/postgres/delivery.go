@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	events "github.com/Desu-php/food/contracts/delivery/v1"
 	"github.com/Desu-php/food/contracts/geo"
 	"github.com/Desu-php/food/services/delivery/internal/application"
 	"github.com/Desu-php/food/services/delivery/internal/domain"
@@ -122,6 +123,11 @@ func (r *Repository) Change(ctx context.Context, id int64, kind string, change f
 		return domain.Delivery{}, fmt.Errorf("begin delivery change: %w", err)
 	}
 	defer rollback(tx)
+	if kind == events.CourierAssigned {
+		if err = assignmentFence(ctx, tx); err != nil {
+			return domain.Delivery{}, err
+		}
+	}
 	d, err := loadDelivery(ctx, tx, id)
 	if err != nil {
 		return d, err
@@ -143,6 +149,11 @@ func (r *Repository) Change(ctx context.Context, id int64, kind string, change f
 	return d, nil
 }
 func saveDelivery(ctx context.Context, tx pgx.Tx, d domain.Delivery) error {
+	if d.Status != domain.PendingAssignment || d.PreparationStarted {
+		if err := cancelOffers(ctx, tx, d.ID); err != nil {
+			return err
+		}
+	}
 	_, err := tx.Exec(ctx, `UPDATE deliveries SET courier_id=NULLIF($2,0),status=$3,version=$4,updated_at=$5,preparation_started=$6,ready=$7,order_version=$8,dispatch_deadline=$9,
  dispatch_token=CASE WHEN $3<>'PENDING_ASSIGNMENT' OR $6 THEN NULL ELSE dispatch_token END,
  dispatch_lease_until=CASE WHEN $3<>'PENDING_ASSIGNMENT' OR $6 THEN NULL ELSE dispatch_lease_until END,
@@ -164,6 +175,13 @@ func writeDeliveryChange(ctx context.Context, tx pgx.Tx, old, d domain.Delivery,
 			return d, err
 		}
 		if status != domain.Available {
+			return d, domain.ErrConflict
+		}
+		var blocked bool
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT FROM order_streams WHERE order_id=$1 AND dispatch_blocked) OR EXISTS(SELECT FROM courier_offers WHERE courier_id=$2 AND delivery_id<>$3 AND status='PENDING')`, d.OrderID, d.CourierID, d.ID).Scan(&blocked); err != nil {
+			return d, err
+		}
+		if blocked {
 			return d, domain.ErrConflict
 		}
 		if _, err = tx.Exec(ctx, `UPDATE couriers SET status='BUSY',updated_at=$2 WHERE id=$1`, d.CourierID, d.UpdatedAt); err != nil {

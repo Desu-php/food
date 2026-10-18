@@ -10,10 +10,16 @@ POS-терминалом курьера либо ресторана. Самов�
 Настройка и восстановление: [Security & Reliability](docs/security-reliability.md),
 [ADR 0006](docs/adr/0006-security-and-consumer-quarantine.md).
 
-Этап 10: автоматическое назначение ближайшего доступного курьера внутри Delivery,
+Этап 10: автоматический поиск ближайшего доступного курьера внутри Delivery,
 Redis GEO с TTL, PostgreSQL lease/cooldown и ручной fallback.
 [API, настройки, rollout и восстановление](docs/automatic-dispatch.md),
 [ADR 0007](docs/adr/0007-automatic-dispatch-and-redis-geo.md).
+
+Этап 11: предложения курьерам с подтверждением, TTL 30 секунд, PostgreSQL
+резервациями и восстановлением после рестарта. Автоматический CourierAssigned
+появляется после принятия; приготовление ждёт продолжения прежней Saga.
+[API, запуск и конкурентность](docs/courier-offers.md),
+[ADR 0008](docs/adr/0008-courier-offer-and-acceptance.md).
 
 Monorepo для сервисов доставки еды. Реализованы Catalog с ресторанами, категориями и блюдами и Orders с созданием,
 чтением, отменой и постоянной идемпотентностью. У каждого сервиса своя база PostgreSQL,
@@ -55,7 +61,7 @@ services/notifications/
   migrations/              processed_events, notifications, failed_messages
 contracts/                 отдельный Go-модуль публичных JSON-контрактов
 scripts/                   интеграционные и полные Compose-проверки
-services/delivery/        Domain, Application, HTTP/PostgreSQL/Kafka/Redis GEO, Bootstrap; API/consumer/outbox + Dispatch Worker
+services/delivery/        Domain, Application, HTTP/PostgreSQL/Kafka/Redis GEO, Bootstrap; API/consumer/outbox + Dispatch/Offer Expiry workers
 contracts/delivery/commands/v1/  CreateDelivery / CancelDelivery, отдельные от events
 deploy/compose.yaml       два PostgreSQL, четыре сервисные БД, Redpanda, Redis, миграции и workers
 docs/adr/0001-orders-catalog-integration.md  принятые решения и sequence diagram

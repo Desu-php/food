@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -67,6 +68,11 @@ func TestCatalogGeolocationSnapshotCommandAndSaga(t *testing.T) {
 	for i, kind := range []string{delivery.DeliveryCreated, delivery.CourierAssigned} {
 		fact := delivery.Event{EventID: ids.NewID(), EventType: kind, SchemaVersion: 1, AggregateID: 99, AggregateVersion: int64(i + 1), CorrelationID: "auto-dispatch", OccurredAt: time.Now(), Payload: delivery.Payload{OrderID: o.Snapshot().ID, AmountToCollectMinor: 6500, Currency: "TJS", Status: domainDeliveryStatus(i)}}
 		if i == 1 {
+			// A pending CourierOffer is local to Delivery and emits no assignment.
+			// The restaurant must still wait for the confirmed CourierAssigned fact.
+			if _, err = staff.Change(ctx, 10, 1, o.Snapshot().ID, "prepare"); !errors.Is(err, domain.ErrInvalidTransition) {
+				t.Fatal("cooking before offer acceptance", err)
+			}
 			fact.Payload.CourierID = 5
 		}
 		if err = r.ProcessDelivery(ctx, fact); err != nil {
