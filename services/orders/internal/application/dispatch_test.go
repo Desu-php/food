@@ -26,6 +26,9 @@ func TestDispatchSnapshotDeadlineAndSagaGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	command := change.Commands[0]
+	if command.Payload.CustomerID != state.CustomerID || command.Payload.CustomerID <= 0 {
+		t.Fatal("tracking owner must come from the aggregate", command)
+	}
 	if command.Payload.RestaurantLocation == nil || *command.Payload.RestaurantLocation != *state.RestaurantLocation || command.Payload.DispatchDeadline == nil {
 		t.Fatal(command)
 	}

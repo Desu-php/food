@@ -226,3 +226,19 @@ partial unique indexes и общие row locks защищают от двойн�
 
 [TTL, API, конкурентность, Saga, запуск и проверки](../../docs/courier-offers.md),
 [ADR 0008](../../docs/adr/0008-courier-offer-and-acceptance.md).
+
+## Этап 12: Real-Time Courier Tracking
+
+`GET /orders/{orderId}/tracking` отдаёт customer-scoped SSE после PICKED_UP.
+Domain Location проверяет GPS; application Tracking проверяет владельца и SQL
+lifecycle до и после Redis read. Redis adapter хранит только latest observation
+с TTL и атомарной защитой от старых timestamp. HTTP использует bounded polling,
+Flusher, heartbeat и лимиты соединений; shutdown отменяет потоки.
+
+Новый формат `POST /couriers/me/location` содержит `accuracy_meters` и `recorded_at`
+и доступен AVAILABLE/BUSY курьерам. Старая форма остаётся dispatch-only.
+Доверенный `customer_id` приходит из Orders через расширение CreateDelivery v1;
+нужна миграция 000007, историческое неизвестное владение не подставляется.
+
+[API, безопасность, sequence diagram, конфигурация и тесты](../../docs/tracking.md),
+[ADR 0009](../../docs/adr/0009-real-time-courier-tracking.md).

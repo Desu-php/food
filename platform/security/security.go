@@ -284,6 +284,9 @@ func (a *Authenticator) Wrap(next http.Handler) http.Handler {
 			deny(w, 403)
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(WithPrincipal(r.Context(), p)))
+		// Long-lived streams must stop when the verified access token expires.
+		ctx, cancel := context.WithDeadline(WithPrincipal(r.Context(), p), token.Expiry)
+		defer cancel()
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

@@ -28,6 +28,12 @@ Clean Architecture, стандартный net/http, pgx/v5, структури�
 в Redpanda; Notifications использует транзакционный Inbox и сохраняет PENDING.
 Go 1.27.2 закреплён в go.work и модулях.
 
+Этап 12: клиентское отслеживание курьера через SSE в Delivery API, GPS с accuracy,
+RecordedAt/ReceivedAt и TTL, доверенная привязка владельца через CreateDelivery.
+Точные координаты доступны только после PICKED_UP, terminal delivery закрывает поток.
+[API, запуск, ограничения и sequence diagram](docs/tracking.md),
+[ADR 0009](docs/adr/0009-real-time-courier-tracking.md).
+
 ## Структура
 
 ```text

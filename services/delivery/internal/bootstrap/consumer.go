@@ -16,7 +16,7 @@ import (
 	"github.com/Desu-php/food/services/delivery/internal/application"
 )
 
-const consumerSchemaCheck = `SELECT o.id,s.dispatch_blocked,p.event_id,c.message_id,r.command_version,s.preparation_started FROM processed_events p LEFT JOIN command_inbox c ON false LEFT JOIN delivery_requests r ON false LEFT JOIN order_streams s ON false LEFT JOIN courier_offers o ON false LIMIT 0`
+const consumerSchemaCheck = `SELECT r.customer_id,o.id,s.dispatch_blocked,p.event_id,c.message_id,r.command_version,s.preparation_started FROM processed_events p LEFT JOIN command_inbox c ON false LEFT JOIN delivery_requests r ON false LEFT JOIN order_streams s ON false LEFT JOIN courier_offers o ON false LIMIT 0`
 
 func RunConsumer(ctx context.Context, c ConsumerConfig, logger *slog.Logger, replay ...ReplayOptions) error {
 	cfg, err := pgxpool.ParseConfig(c.DatabaseURL)

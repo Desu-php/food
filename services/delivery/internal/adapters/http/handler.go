@@ -19,14 +19,25 @@ import (
 )
 
 type handler struct {
-	service *application.Delivery
-	logger  *slog.Logger
-	devAuth bool
+	service        *application.Delivery
+	logger         *slog.Logger
+	devAuth        bool
+	trackingConfig TrackingConfig
+	connections    trackingConnections
 }
 
-func NewHandler(service *application.Delivery, ready func(context.Context) error, logger *slog.Logger, timeout time.Duration, devAuth bool) http.Handler {
-	h := &handler{service, logger, devAuth}
+func NewHandler(service *application.Delivery, ready func(context.Context) error, logger *slog.Logger, timeout time.Duration, devAuth bool, tracking ...TrackingConfig) http.Handler {
+	cfg := DefaultTrackingConfig()
+	if len(tracking) > 0 {
+		cfg = tracking[0]
+	}
+	h := &handler{service: service, logger: logger, devAuth: devAuth, trackingConfig: cfg}
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /orders/{id}/tracking", h.tracking)
+	mux.HandleFunc("/orders/{id}/tracking", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Allow", "GET")
+		writeJSON(w, 405, map[string]string{"error": "method not allowed"})
+	})
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]string{"status": "ok"}) })
 	mux.HandleFunc("GET /ready", func(w http.ResponseWriter, r *http.Request) {
 		if ready(r.Context()) != nil {
@@ -64,7 +75,11 @@ func NewHandler(service *application.Delivery, ready func(context.Context) error
 			id = events.NewID()
 		}
 		w.Header().Set("X-Request-ID", id)
-		ctx, cancel := context.WithTimeout(correlation.WithID(r.Context(), id), timeout)
+		requestTimeout := timeout
+		if _, pattern := mux.Handler(r); pattern == "GET /orders/{id}/tracking" {
+			requestTimeout = cfg.MaxDuration
+		}
+		ctx, cancel := context.WithTimeout(correlation.WithID(r.Context(), id), requestTimeout)
 		defer cancel()
 		defer func() {
 			if recover() != nil {
@@ -91,7 +106,7 @@ func (h *handler) fail(w http.ResponseWriter, err error) {
 	for _, v := range []struct {
 		err    error
 		status int
-	}{{application.ErrLocationRate, 429}, {application.ErrLocationUnavailable, 503}, {domain.ErrInvalid, 400}, {domain.ErrForbidden, 403}, {domain.ErrNotFound, 404}, {domain.ErrConflict, 409}, {domain.ErrTransition, 409}, {domain.ErrPayment, 400}, {domain.ErrCancellationUnsafe, 409}} {
+	}{{domain.ErrStaleLocation, 409}, {application.ErrLocationRate, 429}, {application.ErrLocationUnavailable, 503}, {domain.ErrInvalid, 400}, {domain.ErrForbidden, 403}, {domain.ErrNotFound, 404}, {domain.ErrConflict, 409}, {domain.ErrTransition, 409}, {domain.ErrPayment, 400}, {domain.ErrCancellationUnsafe, 409}} {
 		if errors.Is(err, v.err) {
 			status = v.status
 			message = v.err.Error()

@@ -1,8 +1,10 @@
 package httpadapter
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/Desu-php/food/contracts/geo"
 	"github.com/Desu-php/food/services/delivery/internal/domain"
@@ -14,14 +16,30 @@ func (h *handler) location(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		Latitude  *float64 `json:"latitude"`
-		Longitude *float64 `json:"longitude"`
+		Latitude       *float64        `json:"latitude"`
+		Longitude      *float64        `json:"longitude"`
+		AccuracyMeters json.RawMessage `json:"accuracy_meters"`
+		RecordedAt     json.RawMessage `json:"recorded_at"`
 	}
 	if !h.decode(w, r, &input) {
 		return
 	}
 	if input.Latitude == nil || input.Longitude == nil {
 		h.fail(w, domain.ErrInvalid)
+		return
+	}
+	if len(input.AccuracyMeters) > 0 || len(input.RecordedAt) > 0 {
+		var accuracy *float64
+		var recorded *time.Time
+		if json.Unmarshal(input.AccuracyMeters, &accuracy) != nil || json.Unmarshal(input.RecordedAt, &recorded) != nil || accuracy == nil || recorded == nil {
+			h.fail(w, domain.ErrInvalid)
+			return
+		}
+		if err := h.service.UpdateCourierLocation(r.Context(), domain.Location{CourierID: courier, Latitude: *input.Latitude, Longitude: *input.Longitude, AccuracyMeters: *accuracy, RecordedAt: *recorded}); err != nil {
+			h.fail(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	if err := h.service.UpdateLocation(r.Context(), courier, geo.Point{Latitude: *input.Latitude, Longitude: *input.Longitude}); err != nil {

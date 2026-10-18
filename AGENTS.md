@@ -54,7 +54,7 @@ without implementing it.
 ## Current scope
 
 Production Foundation, Catalog, Orders, Notifications, Restaurant Order
-Fulfillment Saga orchestration, PICKUP and Delivery with operational POS collection, Security & Reliability Hardening, Automatic Courier Dispatch + Redis GEO, Courier Offer & Acceptance. Future modules require
+Fulfillment Saga orchestration, PICKUP and Delivery with operational POS collection, Security & Reliability Hardening, Automatic Courier Dispatch + Redis GEO, Courier Offer & Acceptance, Real-Time Courier Tracking. Future modules require
 separate tasks. The user's current explicit instructions take precedence over this file.
 
 ## MVP payment and fulfillment decision
@@ -227,4 +227,30 @@ never creates or interacts with offers. No new event contracts, topics, Dispatch
 service, customer GPS tracking, maps or road ETA are introduced.
 
 See docs/courier-offers.md and docs/adr/0008-courier-offer-and-acceptance.md.
+Run scripts/check.sh, scripts/test-integration.sh and scripts/verify-offers.py.
+
+
+## Stage 12: Real-Time Courier Tracking
+
+Delivery owns latest courier Location (accuracy, RecordedAt, server ReceivedAt),
+Redis TTL and GPS validation. New GPS payloads atomically enforce timestamp order,
+shared rate limiting and GEO indexing; accept AVAILABLE/BUSY and reject OFFLINE.
+Legacy GPS remains dispatch-only. Never store movement history in PostgreSQL,
+log exact coordinates or publish each GPS update to Kafka.
+
+Customer GET /orders/{orderId}/tracking uses SSE and bounded polling inside Delivery.
+Authenticate a server-mapped customer principal; never accept URL tokens. Bind
+ownership only from trusted CreateDelivery v1 optional customer_id, transactionally
+with Inbox/Delivery/Outbox. Preserve historical fingerprints and unknown NULL owners;
+roll out migration/consumers before producers. No cross-service database reads.
+
+Only PICKED_UP permits coordinates. Check owner/status/courier in PostgreSQL before
+and after Redis reads, discard changed assignments, stop terminal streams without
+Redis. PICKUP never has tracking. Missing/stale/inaccurate GPS or Redis outage must
+not invent points; report location_unavailable and keep order operations independent.
+Use Flusher, heartbeat, operation/write deadlines, token-expiry-bound contexts,
+bounded lifetime, per-process/per-customer connection caps and cancellation cleanup.
+No extra tracking service, maps, routes, ETA, GPS history or frontend.
+
+See docs/tracking.md and docs/adr/0009-real-time-courier-tracking.md.
 Run scripts/check.sh, scripts/test-integration.sh and scripts/verify-offers.py.

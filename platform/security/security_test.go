@@ -68,6 +68,9 @@ func TestJWTTrustBoundaryAndRotation(t *testing.T) {
 		if p.UserID != 80 || p.CustomerID != 7 || p.Has("admin") {
 			t.Error("untrusted claims used as identity")
 		}
+		if expiry, ok := r.Context().Deadline(); !ok || expiry.After(time.Now().Add(time.Hour)) || expiry.Before(time.Now()) {
+			t.Error("authenticated request must be bounded by verified token expiry")
+		}
 		w.WriteHeader(204)
 	}))
 	for _, tc := range []struct {

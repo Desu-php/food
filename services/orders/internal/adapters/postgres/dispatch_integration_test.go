@@ -61,7 +61,7 @@ func TestCatalogGeolocationSnapshotCommandAndSaga(t *testing.T) {
 		t.Fatal(err)
 	}
 	command, err := commands.Decode(body)
-	if err != nil || !geo.Equal(location, command.Payload.RestaurantLocation) || command.Payload.DispatchDeadline == nil {
+	if err != nil || command.Payload.CustomerID != 7 || !geo.Equal(location, command.Payload.RestaurantLocation) || command.Payload.DispatchDeadline == nil {
 		t.Fatal(command, err)
 	}
 	// Real Inbox transitions: automatic and manual assignment use the same existing events.

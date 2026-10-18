@@ -11,10 +11,13 @@ import (
 	"time"
 
 	"github.com/Desu-php/food/platform/security"
+	httpadapter "github.com/Desu-php/food/services/delivery/internal/adapters/http"
 	"github.com/Desu-php/food/services/delivery/internal/application"
 )
 
 type Config struct {
+	Tracking                      httpadapter.TrackingConfig
+	LocationMaxAccuracy           float64
 	Dispatch                      application.DispatchConfig
 	DispatchEnabled               bool
 	RedisURL                      string
@@ -116,6 +119,7 @@ func LoadConfig() (Config, error) {
 	}
 	c.Authentication = authentication
 	c.Dispatch = application.DefaultDispatchConfig()
+	c.Tracking = httpadapter.DefaultTrackingConfig()
 	c.RedisURL = env("REDIS_URL", "redis://redis:6379/0")
 	c.DispatchEnabled, err = strconv.ParseBool(env("DISPATCH_ENABLED", "true"))
 	if err != nil {
@@ -128,6 +132,8 @@ func LoadConfig() (Config, error) {
 		{"DISPATCH_POLL_INTERVAL", "1s", &c.Dispatch.PollInterval}, {"DISPATCH_LEASE", "15s", &c.Dispatch.Lease},
 		{"DISPATCH_RETRY_INTERVAL", "5s", &c.Dispatch.RetryInterval}, {"DISPATCH_COOLDOWN", "2m", &c.Dispatch.Cooldown},
 		{"DISPATCH_OPERATION_TIMEOUT", "3s", &c.Dispatch.OperationTimeout}, {"LOCATION_TTL", "60s", &c.LocationTTL}, {"LOCATION_MIN_INTERVAL", "5s", &c.LocationInterval},
+		{"TRACKING_POLL_INTERVAL", "2s", &c.Tracking.PollInterval}, {"TRACKING_HEARTBEAT", "15s", &c.Tracking.Heartbeat},
+		{"TRACKING_MAX_DURATION", "5m", &c.Tracking.MaxDuration}, {"TRACKING_WRITE_TIMEOUT", "5s", &c.Tracking.WriteTimeout}, {"TRACKING_OPERATION_TIMEOUT", "2s", &c.Tracking.OperationTimeout},
 	} {
 		d, e := time.ParseDuration(env(v.key, v.fallback))
 		if e != nil || d < time.Millisecond {
@@ -145,6 +151,26 @@ func LoadConfig() (Config, error) {
 	}
 	if c.Dispatch.Lease <= c.Dispatch.OperationTimeout || c.LocationInterval >= c.LocationTTL {
 		return c, errors.New("require dispatch lease > operation timeout and location interval < TTL")
+	}
+	for _, item := range []struct {
+		key      string
+		fallback int
+		target   *int
+	}{
+		{"TRACKING_MAX_CONNECTIONS", 200, &c.Tracking.MaxConnections}, {"TRACKING_MAX_PER_CUSTOMER", 3, &c.Tracking.MaxPerCustomer},
+	} {
+		v, err := strconv.Atoi(env(item.key, strconv.Itoa(item.fallback)))
+		if err != nil || v < 1 || v > 10000 {
+			return c, fmt.Errorf("invalid %s", item.key)
+		}
+		*item.target = v
+	}
+	c.LocationMaxAccuracy, err = strconv.ParseFloat(env("LOCATION_MAX_ACCURACY_METERS", "100"), 64)
+	if err != nil || math.IsNaN(c.LocationMaxAccuracy) || math.IsInf(c.LocationMaxAccuracy, 0) || c.LocationMaxAccuracy <= 0 || c.LocationMaxAccuracy > 1000 {
+		return c, errors.New("invalid LOCATION_MAX_ACCURACY_METERS")
+	}
+	if c.Tracking.PollInterval < 100*time.Millisecond || c.Tracking.MaxDuration > 15*time.Minute || c.Tracking.MaxPerCustomer > c.Tracking.MaxConnections || c.Tracking.Heartbeat >= c.Tracking.MaxDuration {
+		return c, errors.New("invalid tracking limits: poll >= 100ms, duration <= 15m, per customer <= total, heartbeat < duration")
 	}
 
 	return c, nil

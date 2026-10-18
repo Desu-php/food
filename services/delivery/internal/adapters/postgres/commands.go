@@ -78,6 +78,15 @@ func (r *Repository) ProcessCommand(ctx context.Context, c commands.Command) err
 	if c.AggregateVersion <= commandVersion {
 		return tx.Commit(ctx)
 	}
+	if c.Payload.CustomerID > 0 {
+		tag, err := tx.Exec(ctx, `UPDATE delivery_requests SET customer_id=$2 WHERE order_id=$1 AND (customer_id IS NULL OR customer_id=$2)`, c.AggregateID, c.Payload.CustomerID)
+		if err != nil {
+			return fmt.Errorf("bind delivery customer: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return application.ErrEventConflict
+		}
+	}
 	if _, err = tx.Exec(ctx, `INSERT INTO order_streams(order_id) VALUES($1) ON CONFLICT DO NOTHING`, c.AggregateID); err != nil {
 		return err
 	}

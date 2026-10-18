@@ -28,7 +28,7 @@ func locationIndex(t *testing.T) (*Locations, *redis.Client) {
 	client := redis.NewClient(opts)
 	t.Cleanup(func() { _ = client.Close() })
 	key := "test:" + ids.NewID()
-	t.Cleanup(func() { client.Del(context.Background(), key+":geo", key+":seen") })
+	t.Cleanup(func() { client.Del(context.Background(), key+":geo", key+":seen", key+":recorded") })
 	return NewLocations(client, key, time.Minute, 5*time.Second), client
 }
 func TestNearestFreshnessRadiusTieAndRateLimit(t *testing.T) {

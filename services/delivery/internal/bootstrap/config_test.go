@@ -29,6 +29,9 @@ func TestDispatchConfigBounds(t *testing.T) {
 		{"DISPATCH_RADIUS_METERS", "NaN"}, {"DISPATCH_RADIUS_METERS", "0"}, {"DISPATCH_RADIUS_METERS", "100001"},
 		{"DISPATCH_MAX_ATTEMPTS", "0"}, {"DISPATCH_LEASE", "2s"}, {"LOCATION_TTL", "2s"},
 		{"LOCATION_MIN_INTERVAL", "0s"}, {"DISPATCH_ENABLED", "invalid"},
+		{"LOCATION_MAX_ACCURACY_METERS", "NaN"}, {"LOCATION_MAX_ACCURACY_METERS", "1001"},
+		{"TRACKING_POLL_INTERVAL", "99ms"}, {"TRACKING_MAX_DURATION", "16m"},
+		{"TRACKING_HEARTBEAT", "5m"}, {"TRACKING_MAX_CONNECTIONS", "0"}, {"TRACKING_MAX_PER_CUSTOMER", "201"},
 	} {
 		t.Run(tc.key+tc.value, func(t *testing.T) {
 			t.Setenv(tc.key, tc.value)

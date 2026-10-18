@@ -51,3 +51,23 @@ func TestHistoricalCanonicalCommandBytesUnchanged(t *testing.T) {
 		t.Fatal("invalid coordinate accepted")
 	}
 }
+
+func TestTrackingOwnershipContract(t *testing.T) {
+	c := Command{MessageID: orders.NewID(), CommandType: CreateDelivery, CorrelationID: "test", AggregateID: 42, AggregateVersion: 1, SchemaVersion: 1, OccurredAt: time.Now(), Payload: Payload{CustomerID: 7, FulfillmentType: "DELIVERY", DeliveryAddress: "Customer address", OrderID: 42, OrderVersion: 2, AmountToCollectMinor: 100, Currency: "TJS"}}
+	body, err := json.Marshal(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Decode(body)
+	if err != nil || got.Payload.CustomerID != 7 {
+		t.Fatal(got, err)
+	}
+	c.Payload.FulfillmentType = ""
+	if c.Validate() == nil {
+		t.Fatal("ownership requires explicit DELIVERY")
+	}
+	c.Payload.CustomerID = -1
+	if c.Validate() == nil {
+		t.Fatal("negative customer accepted")
+	}
+}

@@ -33,11 +33,13 @@ local expired=redis.call('ZRANGEBYSCORE',KEYS[2],'-inf',now-tonumber(ARGV[4]),'L
 for _,id in ipairs(expired) do
  redis.call('ZREM',KEYS[1],id)
  redis.call('ZREM',KEYS[2],id)
+ redis.call('ZREM',KEYS[3],id)
 end
 local last=redis.call('ZSCORE',KEYS[2],ARGV[1])
 if last and tonumber(last)>now-tonumber(ARGV[5]) then return 0 end
 redis.call('GEOADD',KEYS[1],ARGV[2],ARGV[3],ARGV[1])
 redis.call('ZADD',KEYS[2],now,ARGV[1])
+redis.call('ZREM',KEYS[3],ARGV[1])
 redis.call('PEXPIRE',KEYS[1],ARGV[4])
 redis.call('PEXPIRE',KEYS[2],ARGV[4])
 return 1
@@ -49,13 +51,16 @@ local expired=redis.call('ZRANGEBYSCORE',KEYS[2],'-inf',now-tonumber(ARGV[4]),'L
 for _,id in ipairs(expired) do
  redis.call('ZREM',KEYS[1],id)
  redis.call('ZREM',KEYS[2],id)
+ redis.call('ZREM',KEYS[3],id)
 end
 local result={}
 local candidates=redis.call('GEOSEARCH',KEYS[1],'FROMLONLAT',ARGV[1],ARGV[2],'BYRADIUS',ARGV[3],'m','ASC','WITHDIST')
 for _,v in ipairs(candidates) do
  local seen=redis.call('ZSCORE',KEYS[2],v[1])
- if seen and tonumber(seen)>now-tonumber(ARGV[4]) then
-  table.insert(result,{v[1],v[2],tostring(tonumber(seen)+tonumber(ARGV[4]))})
+ local recorded=redis.call('ZSCORE',KEYS[3],v[1])
+ local fresh=seen and math.min(tonumber(seen),tonumber(recorded or seen))
+ if fresh and fresh>now-tonumber(ARGV[4]) then
+  table.insert(result,{v[1],v[2],tostring(math.floor(fresh+tonumber(ARGV[4])))})
  else
   redis.call('ZREM',KEYS[1],v[1])
  end
@@ -67,7 +72,7 @@ func (s *Locations) Update(ctx context.Context, id int64, p geo.Point) error {
 	if id <= 0 || !p.Searchable() {
 		return fmt.Errorf("invalid location")
 	}
-	n, err := update.Run(ctx, s.client, []string{s.key + ":geo", s.key + ":seen"}, id, p.Longitude, p.Latitude, s.ttl.Milliseconds(), s.interval.Milliseconds()).Int()
+	n, err := update.Run(ctx, s.client, []string{s.key + ":geo", s.key + ":seen", s.key + ":recorded"}, id, p.Longitude, p.Latitude, s.ttl.Milliseconds(), s.interval.Milliseconds()).Int()
 	if err != nil {
 		return application.ErrLocationUnavailable
 	}
@@ -77,7 +82,7 @@ func (s *Locations) Update(ctx context.Context, id int64, p geo.Point) error {
 	return nil
 }
 func (s *Locations) Nearest(ctx context.Context, p geo.Point, radius float64) ([]application.Candidate, error) {
-	values, err := nearest.Run(ctx, s.client, []string{s.key + ":geo", s.key + ":seen"}, p.Longitude, p.Latitude, radius, s.ttl.Milliseconds()).Slice()
+	values, err := nearest.Run(ctx, s.client, []string{s.key + ":geo", s.key + ":seen", s.key + ":recorded"}, p.Longitude, p.Latitude, radius, s.ttl.Milliseconds()).Slice()
 	if err != nil {
 		return nil, application.ErrLocationUnavailable
 	}

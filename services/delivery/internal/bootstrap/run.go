@@ -18,7 +18,7 @@ import (
 	"github.com/Desu-php/food/services/delivery/internal/application"
 )
 
-const schemaCheck = "SELECT o.expires_at,d.latitude,d.longitude,d.dispatch_deadline,d.dispatch_attempts,d.id,d.order_id,d.version,d.order_version,d.ready,c.id,c.updated_at,d.preparation_started,p.delivery_id,p.id,e.event_id,i.event_id FROM deliveries d LEFT JOIN couriers c ON c.id=d.courier_id LEFT JOIN payment_confirmations p ON p.delivery_id=d.id LEFT JOIN outbox_events e ON e.aggregate_id=d.id LEFT JOIN processed_events i ON false LEFT JOIN courier_offers o ON o.delivery_id=d.id LIMIT 0"
+const schemaCheck = "SELECT r.customer_id,o.expires_at,d.latitude,d.longitude,d.dispatch_deadline,d.dispatch_attempts,d.id,d.order_id,d.version,d.order_version,d.ready,c.id,c.updated_at,d.preparation_started,p.delivery_id,p.id,e.event_id,i.event_id FROM deliveries d LEFT JOIN delivery_requests r ON r.order_id=d.order_id LEFT JOIN couriers c ON c.id=d.courier_id LEFT JOIN payment_confirmations p ON p.delivery_id=d.id LEFT JOIN outbox_events e ON e.aggregate_id=d.id LEFT JOIN processed_events i ON false LEFT JOIN courier_offers o ON o.delivery_id=d.id LIMIT 0"
 
 func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 	cfg.DevAuthEnabled = cfg.Authentication.DevEnabled
@@ -69,7 +69,8 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 	locations := redisadapter.NewLocations(locationsClient, "{delivery-dispatch}", cfg.LocationTTL, cfg.LocationInterval)
 	dispatch := application.NewDispatch(repo, locations, cfg.Dispatch)
 	offers := application.NewOffers(repo)
-	service := application.NewDelivery(repo, cfg.DispatcherIDs).WithDispatch(dispatch).WithOffers(offers)
+	tracking := application.NewTracking(repo, locations, cfg.LocationTTL, cfg.LocationMaxAccuracy)
+	service := application.NewDelivery(repo, cfg.DispatcherIDs).WithDispatch(dispatch).WithOffers(offers).WithTracking(tracking)
 	workerCtx, stopWorker := context.WithCancel(ctx)
 	expiryDone := make(chan struct{})
 	go func() { defer close(expiryDone); offers.RunExpiry(workerCtx, logger) }()
@@ -88,7 +89,8 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           auth.Wrap(httpadapter.NewHandler(service, ready, logger, cfg.RequestTimeout, cfg.DevAuthEnabled)),
+		Handler:           auth.Wrap(httpadapter.NewHandler(service, ready, logger, cfg.RequestTimeout, cfg.DevAuthEnabled, cfg.Tracking)),
+		BaseContext:       func(net.Listener) context.Context { return ctx },
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,
 		WriteTimeout:      cfg.WriteTimeout,

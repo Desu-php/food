@@ -25,6 +25,7 @@ var ErrUnsupported = errors.New("unsupported delivery contract")
 var ErrInvalid = errors.New("invalid delivery command")
 
 type Payload struct {
+	CustomerID           int64      `json:"customer_id,omitempty"`
 	RestaurantLocation   *geo.Point `json:"restaurant_location,omitempty"`
 	DispatchDeadline     *time.Time `json:"dispatch_deadline,omitempty"`
 	FulfillmentType      string     `json:"fulfillment_type,omitempty"`
@@ -46,6 +47,9 @@ type Command struct {
 }
 
 func (c Command) Validate() error {
+	if c.Payload.CustomerID < 0 || c.Payload.CustomerID > 0 && c.Payload.FulfillmentType != "DELIVERY" {
+		return ErrInvalid
+	}
 	if c.Payload.RestaurantLocation != nil && !c.Payload.RestaurantLocation.Valid() || c.Payload.DispatchDeadline != nil && c.Payload.DispatchDeadline.IsZero() {
 		return ErrInvalid
 	}
