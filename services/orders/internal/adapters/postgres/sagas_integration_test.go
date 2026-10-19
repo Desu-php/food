@@ -220,3 +220,44 @@ func TestSagaOutOfOrderAndStaleDeliveryFacts(t *testing.T) {
 		t.Fatal(current, err)
 	}
 }
+
+func TestNeedsAttentionEventCommitsWithSaga(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := context.Background()
+	r := NewOrders(pool)
+	o, err := r.Create(ctx, "attention", strings.Repeat("a", 64), newOrder(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := application.NewRestaurants(r, map[int64][]int64{10: {1}})
+	if _, err = svc.Change(ctx, 10, 1, o.Snapshot().ID, "accept"); err != nil {
+		t.Fatal(err)
+	}
+	s, err := r.Saga(ctx, 1, o.Snapshot().ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `ALTER TABLE outbox_events ADD CONSTRAINT reject_attention CHECK(event_type<>'OrderNeedsAttention') NOT VALID`); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = r.StepSaga(ctx, s.Deadline.Add(time.Second)); err == nil {
+		t.Fatal("Saga escalated without event")
+	}
+	saved, err := r.Saga(ctx, 1, o.Snapshot().ID)
+	if err != nil || saved.State == domain.SagaNeedsAttention {
+		t.Fatal(saved, err)
+	}
+	if _, err = pool.Exec(ctx, `ALTER TABLE outbox_events DROP CONSTRAINT reject_attention`); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = r.StepSaga(ctx, s.Deadline.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = r.StepSaga(ctx, s.Deadline.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM outbox_events WHERE stream='fulfillment' AND event_type='OrderNeedsAttention'`).Scan(&count); err != nil || count != 1 {
+		t.Fatal(count, err)
+	}
+}

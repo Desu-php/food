@@ -3,6 +3,7 @@ package kafka
 import (
 	"context"
 	"fmt"
+	offers "github.com/Desu-php/food/contracts/courieroffers/v1"
 	"strconv"
 	"time"
 
@@ -30,7 +31,11 @@ func NewProducer(brokers []string, topic string, timeout time.Duration) (*Produc
 func (p *Producer) Publish(ctx context.Context, e application.ClaimedEvent) error {
 	// franz-go enables producer idempotence by default; Inbox is still necessary
 	// across producer restarts and retries after an ambiguous acknowledgement.
-	r := &kgo.Record{Topic: p.topic, Key: []byte(strconv.FormatInt(e.AggregateID, 10)), Value: e.Body,
+	topic := p.topic
+	if e.Stream == "courier_offers" {
+		topic = offers.Topic
+	}
+	r := &kgo.Record{Topic: topic, Key: []byte(strconv.FormatInt(e.AggregateID, 10)), Value: e.Body,
 		Headers: []kgo.RecordHeader{{Key: "correlation_id", Value: []byte(e.CorrelationID)}}}
 	return p.client.ProduceSync(ctx, r).FirstErr()
 }

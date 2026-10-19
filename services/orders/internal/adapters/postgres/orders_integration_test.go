@@ -62,7 +62,7 @@ func integrationPool(t *testing.T, migrations ...string) *pgxpool.Pool {
 	}
 	t.Cleanup(pool.Close)
 	if len(migrations) == 0 {
-		migrations = []string{"000001_orders", "000002_outbox", "000003_fulfillment", "000004_saga", "000005_pickup", "000006_consumer_quarantine", "000007_dispatch_snapshot", "000008_pricing"}
+		migrations = []string{"000001_orders", "000002_outbox", "000003_fulfillment", "000004_saga", "000005_pickup", "000006_consumer_quarantine", "000007_dispatch_snapshot", "000008_pricing", "000009_push_events"}
 	}
 	for _, migration := range migrations {
 		sql, err := os.ReadFile("../../../migrations/" + migration + ".up.sql")

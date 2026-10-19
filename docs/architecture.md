@@ -214,3 +214,15 @@ Catalog рассчитывает private quote v2 по согласованно�
 радиальных тарифов. Orders хранит неизменяемую стоимость и координаты, Delivery
 получает полную сумму POS. Новые сервисы не добавлены.
 [Схема, API и границы согласованности](pricing.md), [ADR 0010](adr/0010-delivery-zones-and-pricing.md).
+
+
+## Stage 14: асинхронный push
+
+Notification Service расширен устройствами, per-recipient intents и per-device
+попытками. Application объявляет PushProvider/OfferRelevance/PushRepository;
+PostgreSQL, FCM SDK и HTTP Delivery client реализуют эти порты. Bootstrap связывает
+их конструкторами. Kafka consumer не отправляет push; отдельный worker сначала
+коммитит claim, затем обращается к provider и фиксирует результат с fencing.
+Новые факты offers и Saga attention используют собственные versioned streams,
+сохраняя прежние версии заказов/доставок и транзакционные Inbox fingerprints.
+Подробности: [Push Notifications](push-notifications.md), [ADR 0011](adr/0011-push-notifications-and-fcm.md).

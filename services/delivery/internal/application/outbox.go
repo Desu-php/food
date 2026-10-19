@@ -12,6 +12,7 @@ import (
 var ErrLeaseLost = errors.New("outbox lease lost")
 
 type ClaimedEvent struct {
+	Stream        string
 	ID            string
 	AggregateID   int64
 	Version       int64

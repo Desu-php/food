@@ -8,6 +8,10 @@ import (
 	"net/http"
 	"time"
 
+	offers "github.com/Desu-php/food/contracts/courieroffers/v1"
+	delivery "github.com/Desu-php/food/contracts/delivery/v1"
+	fulfillment "github.com/Desu-php/food/contracts/fulfillment/v1"
+	"github.com/Desu-php/food/platform/security"
 	httpadapter "github.com/Desu-php/food/services/notifications/internal/adapters/http"
 	"github.com/Desu-php/food/services/notifications/internal/adapters/kafka"
 	"github.com/Desu-php/food/services/notifications/internal/adapters/postgres"
@@ -18,6 +22,14 @@ import (
 const schemaCheck = `SELECT p.event_id,n.id,f.id FROM processed_events p LEFT JOIN notifications n ON n.event_id=p.event_id LEFT JOIN failed_messages f ON false LIMIT 0`
 
 func Run(ctx context.Context, c Config, logger *slog.Logger, replay int64, recovery ...ReplayOptions) error {
+	authentication, err := security.Load()
+	if err != nil {
+		return err
+	}
+	auth, err := security.New(authentication)
+	if err != nil {
+		return err
+	}
 	cfg, err := pgxpool.ParseConfig(c.DatabaseURL)
 	if err != nil {
 		return errors.New("invalid DATABASE_URL")
@@ -30,7 +42,7 @@ func Run(ctx context.Context, c Config, logger *slog.Logger, replay int64, recov
 	}
 	defer pool.Close()
 	check, cancel := context.WithTimeout(ctx, c.Consumer.OperationTimeout)
-	_, err = pool.Exec(check, schemaCheck+`; SELECT id FROM consumer_quarantine LIMIT 0`)
+	_, err = pool.Exec(check, schemaCheck+`; SELECT id FROM consumer_quarantine LIMIT 0; SELECT recipient_id,expires_at FROM notifications LIMIT 0; SELECT id FROM device_registrations LIMIT 0`)
 	cancel()
 	if err != nil {
 		return errors.New("notifications startup check failed: check connectivity and migrations")
@@ -42,6 +54,12 @@ func Run(ctx context.Context, c Config, logger *slog.Logger, replay int64, recov
 
 	consumerStore := postgres.NewConsumerInbox(pool, logger).WithRetry(postgres.ConsumerRetry{Attempts: c.Consumer.MaxAttempts, Timeout: c.Consumer.OperationTimeout, Base: c.Consumer.RetryBase, Max: c.Consumer.RetryMax})
 	handle := func(ctx context.Context, m application.Message) error {
+		if m.Topic != c.Topic {
+			if m.Topic == env("DELIVERY_EVENTS_TOPIC", delivery.Topic) {
+				m.Topic = delivery.Topic
+			}
+			return application.NewBusinessNotifications(repo).Handle(ctx, m)
+		}
 		e, duplicate, err := application.NewNotifications(repo).Handle(ctx, m)
 		if err == nil {
 			message := "notification intent created"
@@ -63,7 +81,7 @@ func Run(ctx context.Context, c Config, logger *slog.Logger, replay int64, recov
 	}
 	// Budget includes every bounded DB operation and backoff, plus quarantine/commit.
 	maxPoll := time.Duration(c.Consumer.MaxAttempts)*(c.Consumer.OperationTimeout+c.Consumer.RetryMax) + 2*c.Consumer.OperationTimeout + time.Minute
-	source, err := kafka.NewConsumer(c.Brokers, c.Topic, c.Group, maxPoll)
+	source, err := kafka.NewConsumer(c.Brokers, c.Topic, c.Group, maxPoll, env("DELIVERY_EVENTS_TOPIC", delivery.Topic), offers.Topic, fulfillment.Topic)
 	if err != nil {
 		return err
 	}
@@ -91,7 +109,7 @@ func Run(ctx context.Context, c Config, logger *slog.Logger, replay int64, recov
 		}
 		return source.Ping(ctx)
 	}
-	server := &http.Server{Addr: c.HTTPAddr, Handler: httpadapter.NewHandler(ready), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 16}
+	server := &http.Server{Addr: c.HTTPAddr, Handler: auth.Wrap(httpadapter.DeviceHandler(application.NewDevices(postgres.NewPushStore(pool)), httpadapter.NewHandler(ready), postgres.NewPushStore(pool).Metrics, authentication.DevEnabled)), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 16}
 	listener, err := net.Listen("tcp", c.HTTPAddr)
 	if err != nil {
 		return err

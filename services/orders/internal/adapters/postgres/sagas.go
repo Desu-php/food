@@ -11,6 +11,8 @@ import (
 
 	"github.com/Desu-php/food/contracts/correlation"
 	commands "github.com/Desu-php/food/contracts/delivery/commands/v1"
+	facts "github.com/Desu-php/food/contracts/fulfillment/v1"
+	ids "github.com/Desu-php/food/contracts/orders/v1"
 	"github.com/Desu-php/food/services/orders/internal/application"
 	"github.com/Desu-php/food/services/orders/internal/domain"
 )
@@ -36,7 +38,35 @@ func loadSaga(ctx context.Context, tx pgx.Tx, id int64) (domain.Saga, error) {
 	return s, nil
 }
 func saveSaga(ctx context.Context, tx pgx.Tx, s domain.Saga) error {
-	_, err := tx.Exec(ctx, `INSERT INTO order_sagas(`+sagaColumns+`) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+	var oldState string
+	err := tx.QueryRow(ctx, `SELECT state FROM order_sagas WHERE order_id=$1`, s.OrderID).Scan(&oldState)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	if s.State == domain.SagaNeedsAttention && oldState != domain.SagaNeedsAttention {
+		var restaurant int64
+		if err = tx.QueryRow(ctx, `SELECT restaurant_id FROM orders WHERE id=$1`, s.OrderID).Scan(&restaurant); err != nil {
+			return err
+		}
+		e := facts.Event{EventID: ids.NewID(), EventType: facts.OrderNeedsAttention, SchemaVersion: 1, AggregateID: s.OrderID, AggregateVersion: s.Version, CorrelationID: s.CorrelationID, OccurredAt: s.UpdatedAt, Payload: facts.Payload{OrderID: s.OrderID, RestaurantID: restaurant}}
+		if e.CorrelationID == "" {
+			e.CorrelationID = correlation.ID(ctx)
+			if e.CorrelationID == "" {
+				e.CorrelationID = e.EventID
+			}
+		}
+		if err = e.Validate(); err != nil {
+			return err
+		}
+		body, err := json.Marshal(e)
+		if err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO outbox_events(event_id,aggregate_id,aggregate_version,event_type,correlation_id,body,stream) VALUES($1,$2,$3,$4,$5,$6,'fulfillment')`, e.EventID, e.AggregateID, e.AggregateVersion, e.EventType, e.CorrelationID, body); err != nil {
+			return err
+		}
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO order_sagas(`+sagaColumns+`) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
  ON CONFLICT(order_id) DO UPDATE SET state=EXCLUDED.state,version=EXCLUDED.version,delivery_id=EXCLUDED.delivery_id,delivery_version=EXCLUDED.delivery_version,courier_id=EXCLUDED.courier_id,command_id=EXCLUDED.command_id,command_type=EXCLUDED.command_type,command_sequence=EXCLUDED.command_sequence,attempts=EXCLUDED.attempts,deadline=EXCLUDED.deadline,next_attempt_at=EXCLUDED.next_attempt_at,reason=EXCLUDED.reason,correlation_id=EXCLUDED.correlation_id,updated_at=EXCLUDED.updated_at,cancel_reason=EXCLUDED.cancel_reason,legacy_reconciliation=EXCLUDED.legacy_reconciliation,dispatch_deadline=EXCLUDED.dispatch_deadline`, s.OrderID, s.State, s.Version, s.DeliveryID, s.DeliveryVersion, s.CourierID, s.CommandID, s.CommandType, s.CommandSequence, s.Attempts, s.Deadline, s.NextAttempt, s.Reason, s.CorrelationID, s.CreatedAt, s.UpdatedAt, s.CancelReason, s.LegacyReconciliation, s.DispatchDeadline)
 	if err != nil {
 		return fmt.Errorf("save saga: %w", err)

@@ -312,6 +312,14 @@ services:
       context: ..
       dockerfile: services/notifications/Dockerfile
     environment:
+      APP_ENV: ${APP_ENV:-production}
+      DEV_AUTH_ENABLED: ${DEV_AUTH_ENABLED:-false}
+      DEV_ADMIN_IDS: ${DEV_ADMIN_IDS:-}
+      DEV_RESTAURANT_GRANTS: ${DEV_RESTAURANT_GRANTS:-}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-}
+      OIDC_AUDIENCE: ${NOTIFICATIONS_OIDC_AUDIENCE:-}
+      AUTH_IDENTITIES_FILE: ${AUTH_IDENTITIES_FILE:-}
       DATABASE_URL: postgres://notifications_service:${NOTIFICATIONS_DB_PASSWORD:?set NOTIFICATIONS_DB_PASSWORD in .env}@notifications-postgres:5432/notifications?sslmode=disable
       HTTP_ADDR: :8083
       KAFKA_BROKERS: ${KAFKA_INTERNAL_BROKERS:-redpanda:9092}
@@ -342,6 +350,34 @@ services:
     restart: unless-stopped
     networks: [backend, edge]
 
+  notification-push-worker:
+    build:
+      context: ..
+      dockerfile: services/notifications/Dockerfile
+    entrypoint: ["/usr/local/bin/notification-push-worker"]
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DATABASE_URL: postgres://notifications_service:${NOTIFICATIONS_DB_PASSWORD:?set NOTIFICATIONS_DB_PASSWORD in .env}@notifications-postgres:5432/notifications?sslmode=disable
+      PUSH_PROVIDER: ${PUSH_PROVIDER:-fcm}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      DELIVERY_INTERNAL_URL: http://delivery:8085
+      PUSH_RELEVANCE_KEY: ${PUSH_RELEVANCE_KEY:-}
+      PUSH_TIMEOUT: ${PUSH_TIMEOUT:-10s}
+      PUSH_LEASE: ${PUSH_LEASE:-45s}
+      PUSH_POLL_INTERVAL: ${PUSH_POLL_INTERVAL:-250ms}
+      PUSH_RETRY_BASE: ${PUSH_RETRY_BASE:-1m}
+      PUSH_RETRY_MAX: ${PUSH_RETRY_MAX:-1h}
+      PUSH_MAX_ATTEMPTS: ${PUSH_MAX_ATTEMPTS:-8}
+      PUSH_SEND_INTERVAL: ${PUSH_SEND_INTERVAL:-100ms}
+      DEVICE_STALE_AFTER: ${DEVICE_STALE_AFTER:-720h}
+      DEVICE_CLEANUP_INTERVAL: ${DEVICE_CLEANUP_INTERVAL:-1h}
+    depends_on:
+      migrate-notifications:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 20s
+    networks: [backend, edge]
+
   migrate-delivery:
     image: migrate/migrate:v4.18.3
     volumes:
@@ -361,6 +397,7 @@ services:
       context: ..
       dockerfile: services/delivery/Dockerfile
     environment:
+      PUSH_RELEVANCE_KEY: ${PUSH_RELEVANCE_KEY:-}
       DATABASE_URL: postgres://delivery_service:${DELIVERY_DB_PASSWORD:?set DELIVERY_DB_PASSWORD in .env}@postgres:5432/delivery?sslmode=disable
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_JWKS_URL: ${OIDC_JWKS_URL:-}

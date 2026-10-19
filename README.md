@@ -21,11 +21,17 @@ Redis GEO с TTL, PostgreSQL lease/cooldown и ручной fallback.
 [API, запуск и конкурентность](docs/courier-offers.md),
 [ADR 0008](docs/adr/0008-courier-offer-and-acceptance.md).
 
+Этап 14: регистрация устройств через OIDC, transactional notification intents,
+отдельный Push Worker и Firebase FCM (официальный Go SDK, FID, ADC), retries,
+per-device история и TTL предложений. Локально используется fake без credentials.
+[API устройств, Firebase, запуск и гарантии](docs/push-notifications.md),
+[ADR 0011](docs/adr/0011-push-notifications-and-fcm.md).
+
 Monorepo для сервисов доставки еды. Реализованы Catalog с ресторанами, категориями и блюдами и Orders с созданием,
 чтением, отменой и постоянной идемпотентностью. У каждого сервиса своя база PostgreSQL,
 Clean Architecture, стандартный net/http, pgx/v5, структурированные JSON-логи slog,
 таймауты и graceful shutdown. Orders публикует события через Transactional Outbox
-в Redpanda; Notifications использует транзакционный Inbox и сохраняет PENDING.
+в Redpanda; Notifications использует транзакционный Inbox и отдельный push worker.
 Go 1.27.2 закреплён в go.work и модулях.
 
 Этап 12: клиентское отслеживание курьера через SSE в Delivery API, GPS с accuracy,
@@ -59,10 +65,11 @@ services/orders/
   migrations/              orders, order_items, idempotency_keys, outbox_events
   go.mod, go.sum, Dockerfile независимая сборка
 services/notifications/
-  cmd/consumer/            Kafka consumer, health HTTP, replay CLI
-  internal/domain/         Notification intent (PENDING)
-  internal/application/    consumer use case и Inbox/MessageSource ports
-  internal/adapters/       Kafka, PostgreSQL, health HTTP
+  cmd/consumer/            Kafka consumer, devices/OIDC API, health, replay CLI
+  cmd/push-worker/         отдельный процесс отправки FCM
+  internal/domain/         Notification, DeviceRegistration, Delivery
+  internal/application/    consumer, devices, templates, PushProvider/worker ports
+  internal/adapters/       Kafka, PostgreSQL, HTTP, FCM, private Delivery client
   internal/bootstrap/      env, DI, lifecycle
   migrations/              processed_events, notifications, failed_messages
 contracts/                 отдельный Go-модуль публичных JSON-контрактов
@@ -603,7 +610,9 @@ partitions/retention. Менять число partitions без плана пе�
 
 Создайте заказ и отмените его командами из раздела Order Service. Передайте,
 например, `X-Request-ID: checkout-demo-1`. После каждого успешного HTTP COMMIT
-в Orders появится Outbox, а затем в Notifications — PENDING с тем же correlation_id.
+в Orders появится Outbox, а затем в Notifications — intent с тем же correlation_id.
+Worker асинхронно создаст доставки активным устройствам; без устройств intent
+завершится CANCELLED. [Регистрация устройств и Firebase](docs/push-notifications.md).
 При повторном Idempotency-Key новое событие не создаётся. Проверить записи:
 
 ```bash
@@ -632,12 +641,13 @@ docker compose --env-file .env -f deploy/compose.yaml run --rm --no-deps \
 Карантин хранит исходные bytes и координаты Kafka, а не логи с payload.
 При недоступности и business storage, и quarantine offset не подтверждается.
 processed_events автоматически не очищается: это сохраняет дедупликацию старых replay.
-PENDING означает только необходимость уведомления, фактическая отправка отсутствует.
+PENDING означает ожидание обработки worker. SENT означает принятие FCM,
+а не гарантированное получение; попытки каждого устройства хранятся отдельно.
 
 Чтобы проверить отказ вручную, остановите только `redpanda`, создайте заказ и
 проверьте рост attempts/наличие неопубликованного Outbox. Верните брокер командой
 `docker compose --env-file .env -f deploy/compose.yaml up -d redpanda` и дождитесь
-PUBLISHED и PENDING intent. При длительном отказе проверьте DEAD и выполните requeue.
+PUBLISHED и сохранённого intent. При длительном отказе проверьте DEAD и выполните requeue.
 
 Для native запуска после миграций (загрузите нужные переменные из `.env`):
 
@@ -645,6 +655,8 @@ PUBLISHED и PENDING intent. При длительном отказе прове
 DATABASE_URL="$ORDERS_DATABASE_URL" go run ./services/orders/cmd/outbox
 DATABASE_URL="$NOTIFICATIONS_DATABASE_URL" HTTP_ADDR=:8083 \
   go run ./services/notifications/cmd/consumer
+# Отдельный процесс; локально PUSH_PROVIDER=fake и APP_ENV=development:
+DATABASE_URL="$NOTIFICATIONS_DATABASE_URL" go run ./services/notifications/cmd/push-worker
 # Независимая сборка из модулей:
 (cd services/orders && GOWORK=off go build -o /tmp/outbox ./cmd/outbox)
 (cd services/notifications && GOWORK=off go build -o /tmp/notifications ./cmd/consumer)

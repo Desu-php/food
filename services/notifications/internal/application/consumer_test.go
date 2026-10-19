@@ -30,7 +30,7 @@ type inboxStub struct {
 	reason         string
 }
 
-func (r *inboxStub) Process(_ context.Context, e events.Event, n domain.Notification) (bool, error) {
+func (r *inboxStub) Process(_ context.Context, e events.Event, n []domain.Notification) (bool, error) {
 	if r.fail {
 		return false, errors.New("database unavailable")
 	}

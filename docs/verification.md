@@ -495,3 +495,25 @@ lease (false, nil). Повторный полный прогон прошёл б
 
 Результаты проверяют локальный тестовый deployment. Production OIDC providers,
 нагрузочный предел, geocoding и road routing этим модулем не проверяются.
+
+
+## Stage 14
+
+`python3 scripts/verify-push.py` проверяет регистрацию нескольких устройств,
+recipient grants, HTTP redaction, доставку через Kafka/Inbox в fake provider,
+повторную публикацию Outbox, смену владельца и деактивацию. Полные Go unit/HTTP и
+PostgreSQL integration tests дополнительно проверяют retry/permanent/UNREGISTERED,
+lease fencing после неоднозначного Send, concurrent workers, TTL и отмену offers.
+`TEST_REAL_FCM=true` — отдельный opt-in smoke на выделенной installation и ADC;
+автоматические проверки Firebase credentials не используют.
+
+
+Проверка Stage 14 от 2026-10-19 (Go 1.27.2): успешно выполнены
+`scripts/check.sh`, `scripts/test-integration.sh`, `verify-push.py`,
+`verify-pricing.py`, `verify-offers.py`, `verify-pickup.py`, а также обновлённые
+`verify-events.py` и `verify-fulfillment.py`. Дополнительно после финального изменения
+защиты EventID выполнены все Notification tests с PostgreSQL/Kafka и `-race`;
+новые частичные индексы прошли migration round trips. Push E2E использует три
+worker и реальную проверку актуальности CourierOffer через Delivery API.
+Реальный FCM smoke не запускался: для него нужны отдельные project/installation
+и ADC; автоматические provider tests используют HTTP transport официального SDK.

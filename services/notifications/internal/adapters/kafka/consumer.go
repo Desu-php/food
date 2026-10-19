@@ -11,9 +11,9 @@ import (
 
 type Consumer struct{ client *kgo.Client }
 
-func NewConsumer(brokers []string, topic, group string, maxPoll time.Duration) (*Consumer, error) {
+func NewConsumer(brokers []string, topic, group string, maxPoll time.Duration, otherTopics ...string) (*Consumer, error) {
 	client, err := kgo.NewClient(kgo.SeedBrokers(brokers...), kgo.ClientID("notifications"),
-		kgo.ConsumeTopics(topic), kgo.ConsumerGroup(group), kgo.DisableAutoCommit(),
+		kgo.ConsumeTopics(append([]string{topic}, otherTopics...)...), kgo.ConsumerGroup(group), kgo.DisableAutoCommit(),
 		kgo.BlockRebalanceOnPoll(), kgo.RebalanceTimeout(maxPoll), kgo.SessionTimeout(30*time.Second),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()), kgo.DialTimeout(5*time.Second),
 		kgo.FetchMaxBytes(1<<20), kgo.FetchMaxPartitionBytes(1<<20))

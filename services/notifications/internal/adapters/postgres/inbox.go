@@ -26,7 +26,7 @@ func rollback(tx pgx.Tx) {
 	_ = tx.Rollback(ctx)
 }
 
-func (r *Inbox) Process(ctx context.Context, e events.Event, n domain.Notification) (bool, error) {
+func (r *Inbox) Process(ctx context.Context, e events.Event, n []domain.Notification) (bool, error) {
 	// Canonical known fields tolerate JSON formatting and additive field changes.
 	body, err := json.Marshal(e)
 	if err != nil {
@@ -38,6 +38,12 @@ func (r *Inbox) Process(ctx context.Context, e events.Event, n domain.Notificati
 		return false, fmt.Errorf("begin inbox: %w", err)
 	}
 	defer rollback(tx)
+	if err = lockEventIdentity(ctx, tx, e.EventID, "push_events"); err != nil {
+		return false, err
+	}
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(current_database()||':'||current_schema()||':notification-order:'||$1::bigint::text,0))`, e.AggregateID); err != nil {
+		return false, err
+	}
 	tag, err := tx.Exec(ctx, `INSERT INTO processed_events(event_id,order_id,aggregate_version,fingerprint) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING`, e.EventID, e.AggregateID, e.AggregateVersion, hash[:])
 	if err != nil {
 		return false, fmt.Errorf("insert inbox event: %w", err)
@@ -56,9 +62,28 @@ func (r *Inbox) Process(ctx context.Context, e events.Event, n domain.Notificati
 		}
 		return true, nil
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO notifications(event_id,order_id,aggregate_version,customer_id,kind,status,correlation_id,fulfillment_type) VALUES($1,$2,$3,$4,$5,$6,$7,NULLIF($8,''))`, n.EventID, n.OrderID, n.Version, n.CustomerID, n.Kind, n.Status, n.CorrelationID, e.Payload.FulfillmentType)
-	if err != nil {
-		return false, fmt.Errorf("insert notification: %w", err)
+	terminal := e.EventType == events.OrderCancelled || e.EventType == events.OrderRejected || e.EventType == events.OrderDelivered || e.EventType == events.OrderPickedUpByCustomer
+	if terminal {
+		if _, err = tx.Exec(ctx, `INSERT INTO notification_order_terminals(order_id,version) VALUES($1,$2) ON CONFLICT(order_id) DO UPDATE SET version=GREATEST(notification_order_terminals.version,EXCLUDED.version)`, e.AggregateID, e.AggregateVersion); err != nil {
+			return false, err
+		}
+		if err = cancelOrderIntents(ctx, tx, e.AggregateID, e.AggregateVersion); err != nil {
+			return false, err
+		}
+	}
+	var obsolete bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT FROM notification_order_terminals WHERE order_id=$1 AND version>$2)`, e.AggregateID, e.AggregateVersion).Scan(&obsolete); err != nil {
+		return false, err
+	}
+	if obsolete {
+		for i := range n {
+			n[i].Status = domain.Cancelled
+		}
+	}
+	for _, intent := range n {
+		if err = insertIntent(ctx, tx, intent, e.Payload.FulfillmentType); err != nil {
+			return false, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return false, fmt.Errorf("commit inbox: %w", err)

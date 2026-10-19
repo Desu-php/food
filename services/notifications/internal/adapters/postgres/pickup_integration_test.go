@@ -35,7 +35,11 @@ func TestPickupReadyAndCompletionNotifications(t *testing.T) {
 		}
 	}
 	var n int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE status='PENDING' AND fulfillment_type='PICKUP'`).Scan(&n); err != nil || n != 2 {
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE fulfillment_type='PICKUP'`).Scan(&n); err != nil || n != 2 {
 		t.Fatal(n, err)
+	}
+	var pending int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE status='PENDING' AND fulfillment_type='PICKUP'`).Scan(&pending); err != nil || pending != 1 {
+		t.Fatal(pending, err)
 	}
 }

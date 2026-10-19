@@ -42,12 +42,36 @@ func (r *Repository) Offers(ctx context.Context, courier int64) ([]domain.Courie
 
 func saveOffer(ctx context.Context, tx pgx.Tx, o domain.CourierOffer) error {
 	_, err := tx.Exec(ctx, `UPDATE courier_offers SET status=$2,responded_at=$3 WHERE id=$1`, o.ID, o.Status, o.RespondedAt)
-	return err
+	if err != nil {
+		return err
+	}
+	return insertOfferEvent(ctx, tx, o)
 }
 
 func cancelOffers(ctx context.Context, tx pgx.Tx, delivery int64) error {
-	_, err := tx.Exec(ctx, `UPDATE courier_offers SET status='CANCELLED',responded_at=clock_timestamp() WHERE delivery_id=$1 AND status='PENDING'`, delivery)
-	return err
+	rows, err := tx.Query(ctx, `UPDATE courier_offers SET status='CANCELLED',responded_at=clock_timestamp() WHERE delivery_id=$1 AND status='PENDING' RETURNING `+offerColumns, delivery)
+	if err != nil {
+		return err
+	}
+	var changed []domain.CourierOffer
+	for rows.Next() {
+		o, err := scanOffer(rows)
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		changed = append(changed, o)
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	for _, o := range changed {
+		if err = insertOfferEvent(ctx, tx, o); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Delivery -> offer -> courier is the lock order for responses. All cancellation

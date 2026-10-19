@@ -67,7 +67,7 @@ func integrationPool(t *testing.T) *pgxpool.Pool {
 		t.Fatal(err)
 	}
 
-	for _, name := range []string{"000002_fulfillment", "000003_saga", "000004_pickup", "000005_consumer_quarantine"} {
+	for _, name := range []string{"000002_fulfillment", "000003_saga", "000004_pickup", "000005_consumer_quarantine", "000006_push"} {
 		body, err := os.ReadFile("../../../migrations/" + name + ".up.sql")
 		if err != nil {
 			t.Fatal(err)
@@ -100,8 +100,8 @@ func TestInboxConcurrentDuplicatesAndReorderedVersions(t *testing.T) {
 	ctx := context.Background()
 	created := message(t, events.OrderCreated, 42)
 	cancelled := message(t, events.OrderCancelled, 42)
-	// Each event is a separate intent. Cancellation arriving first must not cause
-	// the older, delayed creation intent to disappear or replace cancellation.
+	// Preserve both event identities, but do not send delayed actionable creation
+	// after an authoritative terminal order fact has already arrived.
 	if _, _, err := svc.Handle(ctx, cancelled); err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestInboxConcurrentDuplicatesAndReorderedVersions(t *testing.T) {
 	}
 	wg.Wait()
 	var total, pending int
-	if err := pool.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE status='PENDING') FROM notifications`).Scan(&total, &pending); err != nil || total != 2 || pending != 2 {
+	if err := pool.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE status='PENDING') FROM notifications`).Scan(&total, &pending); err != nil || total != 3 || pending != 2 {
 		t.Fatalf("total=%d pending=%d err=%v", total, pending, err)
 	}
 	conflict := message(t, events.OrderCreated, 42)
@@ -178,6 +178,13 @@ func TestInboxRollbackAndReplay(t *testing.T) {
 
 func TestInboxMigrationRoundTrip(t *testing.T) {
 	pool := integrationPool(t)
+	pushDown, err := os.ReadFile("../../../migrations/000006_push.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(context.Background(), string(pushDown)); err != nil {
+		t.Fatal(err)
+	}
 	down, err := os.ReadFile("../../../migrations/000005_consumer_quarantine.down.sql")
 	if err != nil {
 		t.Fatal(err)
@@ -194,7 +201,7 @@ func TestInboxMigrationRoundTrip(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, name := range []string{"000002_fulfillment", "000003_saga", "000004_pickup", "000005_consumer_quarantine"} {
+	for _, name := range []string{"000002_fulfillment", "000003_saga", "000004_pickup", "000005_consumer_quarantine", "000006_push"} {
 		body, err := os.ReadFile("../../../migrations/" + name + ".up.sql")
 		if err != nil {
 			t.Fatal(err)
@@ -299,7 +306,7 @@ func TestKafkaInboxCommitAfterPersistence(t *testing.T) {
 		}
 	}
 	var count int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM notifications`).Scan(&count); err != nil || count != 2 {
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM notifications`).Scan(&count); err != nil || count != 3 {
 		t.Fatalf("notifications=%d err=%v", count, err)
 	}
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM failed_messages`).Scan(&count); err != nil || count != 2 {

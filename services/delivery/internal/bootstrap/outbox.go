@@ -87,7 +87,7 @@ func RunWorker(ctx context.Context, c WorkerConfig, logger *slog.Logger, requeue
 	}
 	defer pool.Close()
 	check, cancel := context.WithTimeout(ctx, c.Worker.DBTimeout)
-	_, err = pool.Exec(check, `SELECT event_id,claim_token,lease_until FROM outbox_events LIMIT 0`)
+	_, err = pool.Exec(check, `SELECT event_id,claim_token,lease_until,stream FROM outbox_events LIMIT 0`)
 	cancel()
 	if err != nil {
 		return errors.New("outbox startup check failed: check connectivity and migrations")

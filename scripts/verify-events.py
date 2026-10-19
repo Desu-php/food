@@ -76,20 +76,20 @@ def main():
         eventually(lambda: int(sql("postgres", "orders", "orders_service", "SELECT max(attempts) FROM outbox_events")) >= 2)
         print("Order committed while Kafka is down; retries preserve the event.", flush=True)
         compose("up", "-d", "--wait", "redpanda")
-        eventually(lambda: sql("notifications-postgres", "notifications", "notifications_service", "SELECT count(*) FROM notifications WHERE kind='OrderCreated' AND status='PENDING'") == "1")
+        eventually(lambda: sql("notifications-postgres", "notifications", "notifications_service", "SELECT count(*) FROM notifications WHERE kind='OrderCreated'") == "1")
         req = urllib.request.Request(f"http://localhost:28081/orders/{order['id']}/cancel", data=b"", method="POST", headers={"X-Dev-Customer-ID": "7", "X-Request-ID": "events-e2e-cancel"})
         with urllib.request.urlopen(req, timeout=10) as response:
             assert json.load(response)["status"] == "CANCELLED"
-        eventually(lambda: sql("notifications-postgres", "notifications", "notifications_service", "SELECT count(*) FROM notifications WHERE status='PENDING'") == "2")
+        eventually(lambda: sql("notifications-postgres", "notifications", "notifications_service", "SELECT count(*) FROM notifications WHERE kind='OrderCancelled'") == "2")
         eventually(lambda: sql("postgres", "orders", "orders_service", "SELECT count(*) FROM outbox_events WHERE status='PUBLISHED'") == "2")
         # Re-deliver both immutable events through the actual Outbox Worker.
         sql("postgres", "orders", "orders_service", "UPDATE outbox_events SET status='PENDING',published_at=NULL,available_at=now(),attempts=0")
         eventually(lambda: sql("postgres", "orders", "orders_service", "SELECT count(*) FROM outbox_events WHERE status='PUBLISHED'") == "2")
         # Wait for actual duplicate handling, not just producer acknowledgements.
         eventually(lambda: compose("logs", "--no-color", "notifications", capture=True).count("duplicate event skipped") >= 2)
-        assert sql("notifications-postgres", "notifications", "notifications_service", "SELECT count(*) FROM notifications") == "2"
-        assert sql("notifications-postgres", "notifications", "notifications_service", "SELECT count(*) FROM notifications WHERE correlation_id IN ('events-e2e-request','events-e2e-cancel')") == "2"
-        print("PASS: recovery, two workers, HTTP idempotency, cancellation, duplicate publication, correlation IDs, PENDING intents.", flush=True)
+        assert sql("notifications-postgres", "notifications", "notifications_service", "SELECT count(*) FROM notifications") == "3"
+        assert sql("notifications-postgres", "notifications", "notifications_service", "SELECT count(*) FROM notifications WHERE correlation_id IN ('events-e2e-request','events-e2e-cancel')") == "3"
+        print("PASS: recovery, two workers, HTTP idempotency, cancellation, duplicate publication, correlation IDs, persistent intents.", flush=True)
     finally:
         compose("down", "-v", "--remove-orphans")
 

@@ -450,3 +450,45 @@ func TestOfferDecisionDoesNotResetExhaustedBudget(t *testing.T) {
 		t.Fatal(got, err)
 	}
 }
+
+func TestOfferEventsTransactionalAndIdempotent(t *testing.T) {
+	r := NewRepository(integrationPool(t))
+	ctx := context.Background()
+	svc := application.NewDelivery(r, []int64{20})
+	geoDelivery(t, r, 42)
+	c := makeCourier(t, svc)
+	if _, err := r.pool.Exec(ctx, `ALTER TABLE outbox_events ADD CONSTRAINT reject_offer_event CHECK(event_type<>'CourierOfferCreated') NOT VALID`); err != nil {
+		t.Fatal(err)
+	}
+	cfg := application.DefaultDispatchConfig()
+	claim, ok, err := r.ClaimDispatch(ctx, cfg)
+	if err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	if _, err = r.OfferDispatch(ctx, claim, candidates(c.ID), cfg.Cooldown); err == nil {
+		t.Fatal("offer persisted without event")
+	}
+	var count int
+	if err = r.pool.QueryRow(ctx, `SELECT count(*) FROM courier_offers`).Scan(&count); err != nil || count != 0 {
+		t.Fatal(count, err)
+	}
+	if _, err = r.pool.Exec(ctx, `ALTER TABLE outbox_events DROP CONSTRAINT reject_offer_event`); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err = r.OfferDispatch(ctx, claim, candidates(c.ID), cfg.Cooldown); err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	offers, err := r.Offers(ctx, c.ID)
+	if err != nil || len(offers) != 1 {
+		t.Fatal(offers, err)
+	}
+	if _, err = r.RespondOffer(ctx, c.ID, offers[0].ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.RespondOffer(ctx, c.ID, offers[0].ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.pool.QueryRow(ctx, `SELECT count(*) FROM outbox_events WHERE stream='courier_offers'`).Scan(&count); err != nil || count != 2 {
+		t.Fatal("offer retry duplicated event", count, err)
+	}
+}

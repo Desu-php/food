@@ -3,6 +3,7 @@ package kafka
 import (
 	"context"
 	"fmt"
+	fulfillment "github.com/Desu-php/food/contracts/fulfillment/v1"
 	"strconv"
 	"time"
 
@@ -36,6 +37,9 @@ func (p *Producer) Publish(ctx context.Context, e application.ClaimedEvent) erro
 	// franz-go enables producer idempotence by default; Inbox is still necessary
 	// across producer restarts and retries after an ambiguous acknowledgement.
 	topic := p.topic
+	if e.Stream == "fulfillment" {
+		topic = fulfillment.Topic
+	}
 	if e.Stream == "delivery_commands" {
 		topic = p.commandTopic
 	}

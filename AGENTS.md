@@ -54,7 +54,7 @@ without implementing it.
 ## Current scope
 
 Production Foundation, Catalog, Orders, Notifications, Restaurant Order
-Fulfillment Saga orchestration, PICKUP and Delivery with operational POS collection, Security & Reliability Hardening, Automatic Courier Dispatch + Redis GEO, Courier Offer & Acceptance, Real-Time Courier Tracking, Delivery Zones & Pricing. Future modules require
+Fulfillment Saga orchestration, PICKUP and Delivery with operational POS collection, Security & Reliability Hardening, Automatic Courier Dispatch + Redis GEO, Courier Offer & Acceptance, Real-Time Courier Tracking, Delivery Zones & Pricing, Push Notifications & Firebase FCM. Future modules require
 separate tasks. The user's current explicit instructions take precedence over this file.
 
 ## MVP payment and fulfillment decision
@@ -284,3 +284,37 @@ never rewrite stored idempotency JSON. Orders downgrade must refuse new pricing
 snapshots. See docs/pricing.md and docs/adr/0010-delivery-zones-and-pricing.md.
 Run scripts/check.sh, scripts/test-integration.sh, scripts/verify-pricing.py,
 scripts/verify-offers.py and scripts/verify-pickup.py. No commits without approval.
+
+
+## Stage 14: Push Notifications & Firebase FCM
+
+Notifications owns device registrations, intents, per-device deliveries and attempt
+history. Run its Kafka/API process and separate Push Worker; never call Firebase
+from a business service or inside an Inbox transaction. Official Firebase Admin Go
+v4.22.0 supports Message.Fid: use registered Firebase Installation IDs and ADC.
+Fake is explicit development/test only. Domain must not depend on Firebase.
+
+OIDC maps customer/courier IDs and restaurant grants from the server-owned registry.
+One installation has one active owner/recipient; transfer revokes the old record and
+uses a new registration ID. Recheck ownership/activity before Send. Never expose or
+log installation IDs, tokens, Firebase errors or confidential payloads. Scrub the
+identifier on revocation; retain attempt audit. Grant removal also requires device
+revocation. Historical notifications must never become a backfill campaign.
+
+Use PostgreSQL SKIP LOCKED leases with fencing, bounded retries/jitter, Retry-After,
+shared send-start rate limiting and recovery after restart. FCM accepted does not
+mean received/read. Crash after Send may duplicate push; retain UNKNOWN attempts.
+UNREGISTERED revokes only its registration; INVALID_ARGUMENT alone never does.
+Preserve existing Inbox fingerprints and service-wide quarantine across all topics.
+
+CourierOfferCreated/Closed and OrderNeedsAttention use separate versioned business
+contracts and Outbox streams; preserve old aggregate versions/topics. Pending offer
+push expires at the original offer deadline, terminal facts cancel unsent intents,
+and worker checks Delivery's service-auth private relevance API before Send.
+Never invent facts, revoke already accepted FCM messages, publish GPS or rely on
+push as the source of truth. No reminder for the existing 30-second offers.
+
+See docs/push-notifications.md and docs/adr/0011-push-notifications-and-fcm.md.
+Run scripts/check.sh, scripts/test-integration.sh, scripts/verify-push.py,
+scripts/verify-pricing.py, scripts/verify-offers.py and scripts/verify-pickup.py.
+Real FCM tests require explicit opt-in and a dedicated installation. No commits.

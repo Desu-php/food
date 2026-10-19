@@ -21,7 +21,7 @@ type Message struct {
 }
 
 type InboxRepository interface {
-	Process(context.Context, events.Event, domain.Notification) (bool, error)
+	Process(context.Context, events.Event, []domain.Notification) (bool, error)
 	Quarantine(context.Context, Message, string, int) error
 }
 
@@ -39,10 +39,7 @@ func (s *Notifications) Handle(ctx context.Context, m Message) (events.Event, bo
 	if string(m.Key) != strconv.FormatInt(e.AggregateID, 10) {
 		return e, false, events.ErrInvalid
 	}
-	n, err := domain.NewPending(e.EventID, e.AggregateID, e.AggregateVersion, e.Payload.CustomerID, e.EventType, e.CorrelationID)
-	if err != nil {
-		return e, false, err
-	}
+	n := OrderIntents(e)
 	duplicate, err := s.repo.Process(ctx, e, n)
 	return e, duplicate, err
 }

@@ -87,7 +87,7 @@ def main():
         eventually(lambda: sql("postgres", "delivery", "delivery_service", "SELECT count(*) FROM processed_events") == "10")
         assert sql("postgres", "delivery", "delivery_service", "SELECT count(*) FROM deliveries") == "1"
         assert sql("postgres", "delivery", "delivery_service", "SELECT count(*) FROM payment_confirmations") == "1"
-        eventually(lambda: sql("notifications-postgres", "notifications", "notifications_service", "SELECT count(*) FROM notifications") == "10")
+        eventually(lambda: sql("notifications-postgres", "notifications", "notifications_service", "SELECT count(*) FROM notifications WHERE kind LIKE 'Order%'") == "10")
         assert request(28081, "/orders", body, {**customer, "Idempotency-Key": "fulfillment-1"})["status"] == "WAITING_RESTAURANT"
         print("PASS: restaurant ACL/transitions, ready pickup, assignment, atomic POS, broker outage, consumer restart, duplicate streams, rejection and Notifications.", flush=True)
     finally:

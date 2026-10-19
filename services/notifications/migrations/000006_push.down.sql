@@ -1,0 +1,13 @@
+DO $$ BEGIN IF EXISTS(SELECT FROM device_registrations) OR EXISTS(SELECT FROM push_events) OR EXISTS(SELECT FROM push_deliveries) OR EXISTS(SELECT FROM notifications WHERE title<>'' OR recipient_type<>'CUSTOMER') THEN RAISE EXCEPTION 'push audit exists; downgrade refused'; END IF; END $$;
+DROP INDEX notifications_processing_idx,notifications_order_active_idx,notifications_offer_active_idx;
+DROP TRIGGER notification_legacy_recipient ON notifications;
+DROP FUNCTION notification_legacy_recipient();
+DROP TABLE push_attempts,push_deliveries,push_rate_limit,device_registrations,offer_states,push_events,notification_order_terminals;
+ALTER TABLE notifications DROP CONSTRAINT notifications_event_id_recipient_type_recipient_id_key;
+ALTER TABLE notifications DROP COLUMN recipient_type,DROP COLUMN recipient_id,DROP COLUMN title,DROP COLUMN body,DROP COLUMN data,DROP COLUMN updated_at,DROP COLUMN expires_at,DROP COLUMN offer_id,DROP COLUMN reason;
+ALTER TABLE notifications ALTER COLUMN customer_id SET NOT NULL;
+ALTER TABLE notifications ADD UNIQUE(event_id),ADD UNIQUE(order_id,aggregate_version),ADD FOREIGN KEY(event_id) REFERENCES processed_events(event_id);
+ALTER TABLE notifications ADD CONSTRAINT notifications_kind_check CHECK(kind IN ('OrderCreated','OrderCancelled','OrderAccepted','OrderRejected','OrderPreparing','OrderReadyForPickup','OrderPickedUpByCustomer','OrderOnTheWay','OrderDelivered','OrderWaitingCourier','OrderCourierAssigned','OrderCourierReleased','OrderCancellationRequested','OrderResumed'));
+ALTER TABLE notifications DROP CONSTRAINT notifications_status_check;
+UPDATE notifications SET status='PENDING';
+ALTER TABLE notifications ADD CONSTRAINT notifications_status_check CHECK(status='PENDING');

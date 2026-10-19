@@ -27,11 +27,11 @@ func (r *Outbox) Claim(ctx context.Context, lease time.Duration) (application.Cl
 	err := r.pool.QueryRow(ctx, `WITH candidate AS (
  SELECT e.event_id,e.status='PROCESSING' AS recovered FROM outbox_events e
  WHERE ((e.status='PENDING' AND e.available_at<=now()) OR (e.status='PROCESSING' AND e.lease_until<=now()))
- AND NOT EXISTS (SELECT 1 FROM outbox_events prev WHERE prev.aggregate_id=e.aggregate_id AND prev.aggregate_version<e.aggregate_version AND prev.status<>'PUBLISHED')
+ AND NOT EXISTS (SELECT 1 FROM outbox_events prev WHERE prev.stream=e.stream AND prev.aggregate_id=e.aggregate_id AND prev.aggregate_version<e.aggregate_version AND prev.status<>'PUBLISHED')
  ORDER BY e.created_at,e.aggregate_id,e.aggregate_version FOR UPDATE OF e SKIP LOCKED LIMIT 1
  ) UPDATE outbox_events e SET status='PROCESSING',claim_token=$1,lease_until=now()+$2*interval '1 millisecond',attempts=e.attempts+1
  FROM candidate c WHERE e.event_id=c.event_id
- RETURNING e.event_id::text,e.aggregate_id,e.aggregate_version,e.correlation_id,e.body,e.attempts,c.recovered`, e.Token, lease.Milliseconds()).Scan(&e.ID, &e.AggregateID, &e.Version, &e.CorrelationID, &e.Body, &e.Attempts, &e.Recovered)
+ RETURNING e.event_id::text,e.aggregate_id,e.aggregate_version,e.correlation_id,e.body,e.attempts,c.recovered,e.stream`, e.Token, lease.Milliseconds()).Scan(&e.ID, &e.AggregateID, &e.Version, &e.CorrelationID, &e.Body, &e.Attempts, &e.Recovered, &e.Stream)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return e, false, nil
 	}

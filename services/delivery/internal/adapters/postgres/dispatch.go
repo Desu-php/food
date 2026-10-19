@@ -134,8 +134,11 @@ func (r *Repository) OfferDispatch(ctx context.Context, claim application.Dispat
 		if err != nil {
 			return false, nil
 		}
-		if _, err = tx.Exec(ctx, `INSERT INTO courier_offers(delivery_id,courier_id,status,expires_at,created_at) VALUES($1,$2,$3,$4,$5)`, offer.DeliveryID, offer.CourierID, offer.Status, offer.ExpiresAt, offer.CreatedAt); err != nil {
+		if err = tx.QueryRow(ctx, `INSERT INTO courier_offers(delivery_id,courier_id,status,expires_at,created_at) VALUES($1,$2,$3,$4,$5) RETURNING id`, offer.DeliveryID, offer.CourierID, offer.Status, offer.ExpiresAt, offer.CreatedAt).Scan(&offer.ID); err != nil {
 			return false, conflict(err)
+		}
+		if err = insertOfferEvent(ctx, tx, offer); err != nil {
+			return false, err
 		}
 		if _, err = tx.Exec(ctx, `UPDATE deliveries SET dispatch_token=NULL,dispatch_lease_until=NULL,dispatch_reason='awaiting_courier_acceptance' WHERE id=$1`, d.ID); err != nil {
 			return false, err

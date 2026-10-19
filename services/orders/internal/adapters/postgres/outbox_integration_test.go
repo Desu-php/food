@@ -168,7 +168,7 @@ func TestOutboxMigrationRoundTrip(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, name := range []string{"000003_fulfillment", "000004_saga", "000005_pickup", "000007_dispatch_snapshot", "000008_pricing"} {
+	for _, name := range []string{"000003_fulfillment", "000004_saga", "000005_pickup", "000007_dispatch_snapshot", "000008_pricing", "000009_push_events"} {
 		body, err := os.ReadFile("../../../migrations/" + name + ".up.sql")
 		if err != nil {
 			t.Fatal(err)
