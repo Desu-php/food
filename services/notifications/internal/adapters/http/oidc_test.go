@@ -38,7 +38,7 @@ func TestDeviceOIDCSignedClaimsCannotChooseOwner(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		claims, err := json.Marshal(map[string]any{"iss": "https://issuer.example", "aud": tt.audience, "sub": "opaque-customer", "exp": time.Now().Add(time.Minute).Unix(), "roles": []string{"courier", "admin"}, "customer_id": 999, "courier_id": 88})
+		claims, err := json.Marshal(map[string]any{"typ": "Bearer", "iss": "https://issuer.example", "aud": tt.audience, "sub": "opaque-customer", "exp": time.Now().Add(time.Minute).Unix(), "roles": []string{"courier", "admin"}, "customer_id": 999, "courier_id": 88})
 		if err != nil {
 			t.Fatal(err)
 		}

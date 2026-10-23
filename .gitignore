@@ -43,3 +43,6 @@ Desktop.ini
 # Firebase ADC must be mounted from outside the checkout.
 /firebase-credentials*.json
 /service-account*.json
+
+# Local OIDC keys, CA certificates, registry and development IdP state.
+/.local/

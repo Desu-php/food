@@ -1,10 +1,30 @@
-# Food Delivery — Catalog, Orders, Notifications и Delivery
+# Food Delivery — Auth, Catalog, Orders, Notifications и Delivery
 
 В MVP поддерживаются DELIVERY и PICKUP. Клиент платит при получении физическим
 POS-терминалом курьера либо ресторана. Самовывоз: [API и запуск](docs/pickup.md),
 [ADR 0005](docs/adr/0005-pickup-and-delivery.md).
 Онлайн-оплаты и Payment Service нет. Полный цикл и запуск:
 [Restaurant Fulfillment + Delivery](docs/fulfillment.md), [ADR 0004 — Fulfillment Saga](docs/adr/0004-fulfillment-saga.md).
+
+Этап 18: независимый `services/auth` со своей PostgreSQL, собственными Login/Register
+API, Argon2id, короткими ES256 JWT/JWKS и HttpOnly refresh rotation. Права и связи
+хранятся в Auth; бизнес-API проверяют актуальную сессию и сохраняют resource-level
+authorization. Login не требует редиректов. Frontend в этом этапе не меняется.
+[Контракт Quasar, запуск, ключи и миграция](docs/auth-service.md),
+[ADR 0013](docs/adr/0013-independent-auth-service.md).
+
+Новый режим включается overlay `deploy/compose.auth.yaml` после импорта и проверки
+привязок. OIDC/Keycloak и старый registry сохранены для контролируемого перехода;
+два overlay одновременно не подключаются. Публичная production-регистрация пока
+создаёт PENDING_VERIFICATION: без почтового канала подтверждение/recovery недоступны,
+а вход такого customer закрыт. Управляемые аккаунты создаются через `authctl`.
+
+```sh
+# После подготовки .local/auth/keys.json, csrf.key, service.key и новых DB passwords:
+docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.auth.yaml up -d --build
+# Сквозная проверка нового Auth в отдельном disposable deployment:
+python3 scripts/verify-auth-service.py
+```
 
 Этап 9: OIDC/JWKS, resource authorization, durable consumer quarantine и CI.
 Настройка и восстановление: [Security & Reliability](docs/security-reliability.md),
@@ -27,6 +47,38 @@ per-device история и TTL предложений. Локально исп
 [API устройств, Firebase, запуск и гарантии](docs/push-notifications.md),
 [ADR 0011](docs/adr/0011-push-notifications-and-fcm.md).
 
+Этап 16: `GET /v1/auth/me` в Orders, профиль из серверного Principal, общий
+API audience для SPA, явное различение access/ID token и CORS по allowlist.
+[Контракт frontend, регистрация staff и запуск Keycloak по HTTPS](docs/auth-profile-oidc.md),
+[ADR 0012](docs/adr/0012-auth-profile-and-oidc.md).
+
+В сохранённом legacy режиме Stage 16 frontend выполняет Code + PKCE S256 с public client `food-pwa`
+и передаёт `Authorization: Bearer <access_token>`. Profile возвращает
+`{"user_id":10,"roles":["restaurant_staff"],"restaurant_ids":[1,2],"permissions":[]}`,
+всегда с `Cache-Control: no-store`; 401 означает отсутствующий/недействительный
+токен, 403 — отсутствие привязки Subject в серверном реестре. Выбор ресторана
+в UI не заменяет серверные grants. Имена/email/токены в профиль не включаются.
+
+Для реального IdP задайте `DEV_AUTH_ENABLED=false`, `OIDC_ISSUER`, `OIDC_JWKS_URL`,
+`OIDC_AUDIENCE=food-api`, `AUTH_IDENTITIES_FILE` и точные `CORS_ALLOWED_ORIGINS`.
+Compose наследует общий audience во всех четырёх API, если service override пуст.
+Issuer/JWKS требуют HTTPS даже в development; роли и business IDs берутся из
+deployment registry. Не используйте frontend Client ID вместо API audience.
+Локальный Keycloak запускается опциональным `deploy/compose.oidc.yaml`; сначала
+подготовьте TLS и привязки по инструкции выше. Frontend `.env` контракт:
+
+```dotenv
+OIDC_AUTHORITY=https://identity.food.test:8443/realms/food
+OIDC_CLIENT_ID=food-pwa
+AUTH_PROFILE_URL=http://localhost:8081/v1/auth/me
+```
+
+Способ экспорта этих имён в Quasar следует сверить в отдельном frontend-проекте;
+он в этом репозитории отсутствует. Пример public client использует callback
+`http://localhost:9000/auth/callback` и post-logout `http://localhost:9000/`.
+Автопроверка с настоящим HTTPS Keycloak и временными credentials:
+`python3 scripts/verify-auth.py`; browser/PWA smoke выполняется в отдельном frontend.
+
 Monorepo для сервисов доставки еды. Реализованы Catalog с ресторанами, категориями и блюдами и Orders с созданием,
 чтением, отменой и постоянной идемпотентностью. У каждого сервиса своя база PostgreSQL,
 Clean Architecture, стандартный net/http, pgx/v5, структурированные JSON-логи slog,
@@ -43,6 +95,14 @@ RecordedAt/ReceivedAt и TTL, доверенная привязка владел
 ## Структура
 
 ```text
+services/auth/
+  cmd/api/                 независимый Auth API
+  cmd/authctl/             offline administration, import и key generation
+  internal/domain/         User, статусы и binding/password invariants
+  internal/application/    auth/session/admin use cases и порты
+  internal/adapters/       HTTP, PostgreSQL, Argon2id и JWT
+  internal/bootstrap/      конфигурация, DI, listeners и cleanup/revocation workers
+  migrations/              отдельная Auth DB schema
 services/catalog/
   cmd/api/                 точка входа
   internal/domain/         Restaurant, MenuCategory, MenuItem, инварианты
@@ -103,6 +163,18 @@ docker compose --env-file .env -f deploy/compose.yaml up --build -d
 docker compose --env-file .env -f deploy/compose.yaml ps
 docker compose --env-file .env -f deploy/compose.yaml logs -f catalog
 ```
+
+Для уже настроенного локального Keycloak подключайте также OIDC overlay:
+
+```bash
+docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.oidc.yaml up -d --wait
+```
+
+Если в `.env` задан `COMPOSE_FILE=deploy/compose.yaml:deploy/compose.oidc.yaml`,
+достаточно `docker compose up -d --wait`. Явный `-f deploy/compose.yaml` перекрывает
+`COMPOSE_FILE` и исключает overlay: API теряют монтирование реестра и CA, а Keycloak
+показывается как orphan. При `cannot open AUTH_IDENTITIES_FILE` проверьте эту
+команду запуска. Подготовка OIDC описана в [инструкции](docs/auth-profile-oidc.md).
 
 Для существующей `.env` добавьте CATALOG_DB_PASSWORD, ORDERS_DB_PASSWORD,
 NOTIFICATIONS_POSTGRES_PASSWORD, NOTIFICATIONS_DB_PASSWORD и DELIVERY_DB_PASSWORD из
@@ -422,7 +494,8 @@ application-порт, PostgreSQL-адаптер и SQL-миграцию. Зат�
 HTTP и интеграционные тесты и документацию. Не добавляйте слои, которые лишь
 пересылают вызовы, и не переносите бизнес-правила в handlers или SQL-адаптеры.
 
-Production использует OIDC и серверные resource grants. Compose предназначен для
+Production использует проверенные JWT и серверные resource grants; новый режим
+получает их из Auth, legacy — из OIDC registry. Compose предназначен для
 локальной разработки; боевое окружение отдельно задаёт identity registry, secrets,
 TLS и доступ к БД. См. [настройку OIDC](docs/security-reliability.md).
 
@@ -521,7 +594,8 @@ Quote не резервирует блюда: доступность и цена
 
 Dev headers работают только при явном DEV_AUTH_ENABLED=true и
 APP_ENV=development/test. Production с dev mode не запускается. При false нужны
-OIDC_ISSUER, OIDC_AUDIENCE, OIDC_JWKS_URL и серверный AUTH_IDENTITIES_FILE.
+OIDC_ISSUER, OIDC_AUDIENCE, OIDC_JWKS_URL и доверенный источник Principal: либо
+AUTH_PRINCIPAL_URL/AUTH_SERVICE_KEY_FILE нового Auth, либо legacy AUTH_IDENTITIES_FILE.
 Роли и ownership определяются серверной привязкой issuer/subject к внутренним ID.
 Подробности: [identity и resource authorization](docs/security-reliability.md).
 

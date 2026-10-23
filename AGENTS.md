@@ -53,8 +53,8 @@ without implementing it.
 
 ## Current scope
 
-Production Foundation, Catalog, Orders, Notifications, Restaurant Order
-Fulfillment Saga orchestration, PICKUP and Delivery with operational POS collection, Security & Reliability Hardening, Automatic Courier Dispatch + Redis GEO, Courier Offer & Acceptance, Real-Time Courier Tracking, Delivery Zones & Pricing, Push Notifications & Firebase FCM. Future modules require
+Production Foundation, Catalog, Orders, Notifications, Independent Auth Service, Restaurant Order
+Fulfillment Saga orchestration, PICKUP and Delivery with operational POS collection, Security & Reliability Hardening, Automatic Courier Dispatch + Redis GEO, Courier Offer & Acceptance, Real-Time Courier Tracking, Delivery Zones & Pricing, Push Notifications & Firebase FCM, Auth Profile API & Real OIDC Integration. Future modules require
 separate tasks. The user's current explicit instructions take precedence over this file.
 
 ## MVP payment and fulfillment decision
@@ -318,3 +318,86 @@ See docs/push-notifications.md and docs/adr/0011-push-notifications-and-fcm.md.
 Run scripts/check.sh, scripts/test-integration.sh, scripts/verify-push.py,
 scripts/verify-pricing.py, scripts/verify-offers.py and scripts/verify-pickup.py.
 Real FCM tests require explicit opt-in and a dedicated installation. No commits.
+
+## Stage 16: Auth Profile API & Real OIDC Integration
+
+Orders exposes GET /v1/auth/me as an explicit HTTP DTO derived only from the
+authenticated server-mapped Principal: user_id, roles, restaurant_ids, permissions.
+Always return arrays and Cache-Control: no-store. Missing/invalid access tokens
+return 401; verified subjects absent from the registry return 403. Never expose
+Subject, tokens, issuer/JWKS configuration or invented personal data. Profile does
+not grant authority; each API still checks roles, resource ownership and grants.
+
+MVP SPA may use one explicit food-api audience across Catalog, Orders, Delivery
+and Notifications. This supersedes Stage 9's distinct-audience requirement only
+for this shared trusted backend; per-service audience overrides remain supported.
+Never use the public SPA client ID as API audience or accept ID/refresh tokens.
+Require RS256/ES256, trusted HTTPS issuer/JWKS, aud, exp and an access-token marker
+(Keycloak signed typ=Bearer or RFC 9068 protected typ=at+jwt/application/at+jwt).
+Authorization Code + PKCE S256 has no frontend client secret.
+
+Identity registry remains deployment-owned and issuer-namespaced. Staff bindings
+require explicit UserID, restaurant_staff and restaurant grants; never authorize
+from JWT role/ID claims. Registry changes require coordinated API restart and
+push device revocation where applicable. No User Service or self-registration.
+
+CORS_ALLOWED_ORIGINS lists exact origins; production requires HTTPS, never wildcard.
+Wrap authentication with CORS only for selected public API routes; allow Bearer
+preflights without authenticating OPTIONS. Never enable browser access to internal
+listeners, health, metrics or service-secret headers. Dev identity headers remain
+explicit development/test only and are not allowed through CORS.
+
+See docs/auth-profile-oidc.md, docs/security-reliability.md and ADR 0012. The optional
+deploy/compose.oidc.yaml is local Keycloak with HTTPS and public PKCE client;
+never deploy its start-dev/H2 setup to production. Do not modify the separate
+frontend repository. Run scripts/check.sh, scripts/test-integration.sh,
+scripts/verify-auth.py (real isolated Keycloak with temporary credentials) and existing
+verify-push/pricing/offers/pickup scripts. No commits without authorization.
+
+## Stage 18: Independent Auth Service
+
+Stage 18 supersedes the earlier prohibition on a separate Auth service and the
+requirement for external OIDC login. Auth owns its PostgreSQL database, users,
+Argon2id password hashes, roles, restaurant memberships, courier/customer bindings,
+sessions, refresh hashes, signing keys and administration audit. Keep domain and
+application independent of HTTP, SQL and crypto libraries through concrete ports.
+
+Public registration creates customer only. With no email channel, production
+registrations remain PENDING_VERIFICATION and cannot log in; verification/recovery
+must fail explicitly rather than invent email ownership. Unverified login is an
+explicit development/test option, forbidden in production. Managed accounts are
+provisioned by deployment administrators through authctl with audited operator and
+password input on stdin. Never add public role assignment or log credentials.
+
+Use short-lived ES256 at+jwt access tokens in frontend memory and rotated opaque
+refresh tokens in HttpOnly Secure SameSite=Strict host-only cookies. Persist only
+SHA-256 refresh hashes; rotation and replay detection must use PostgreSQL locks.
+Reuse revokes the entire session, including a concurrent successful rotation.
+Preserve consumed hashes for the full session lifetime. Frontend must serialize
+refresh across tabs. Logout/password/grant changes revoke access immediately via
+online Auth authority checks, not just expiry. Check issuer/audience/signature/exp/
+nbf/algorithm before resolving the current Principal through Auth's private API.
+
+Never read Auth tables from other services. Preserve resource ownership checks in
+Catalog, Orders and Delivery. Inject current authorization into application gates;
+never replace it with client roles or stale startup grants. Notifications rechecks
+device authorization before sending; permission changes queue durable, fenced
+device revocations in Auth and Notifications scrubs identifiers in its own DB.
+
+Preserve old OIDC, registry, optional Compose and tests during migration. Import
+registry identities transactionally using original UserID/CustomerID/CourierID/
+RestaurantID; conflicting imports abort. Do not import passwords or invent emails,
+verification or new business facts. Imported accounts start disabled and require
+controlled provisioning. New IDs use a reserved high range; audit existing maxima
+before rollout. Switch all APIs to Auth only after validating imports and tests.
+
+Exact Origin/CORS allowlists and CSRF tokens protect cookie endpoints. Internal
+service keys must never be CORS-enabled or exposed by the public reverse proxy.
+Production requires HTTPS endpoints, secure cookies, private signing-key storage,
+key overlap during rotation and secret distribution. Auth is a JWT issuer, not an
+OIDC Provider. Do not modify the separate frontend repository or commit changes.
+
+See docs/auth-service.md and ADR 0013. Run scripts/check.sh,
+scripts/test-integration.sh, scripts/verify-auth-service.py and the existing
+verify-auth/push/pricing/offers/pickup scripts. Keep email verification/recovery
+production limitations and migration/rollback consequences explicit.

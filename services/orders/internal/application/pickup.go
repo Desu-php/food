@@ -49,7 +49,7 @@ func (s *Orders) IssuePickupCode(ctx context.Context, customer, id int64) (Picku
 }
 
 func (s *Restaurants) CompletePickup(ctx context.Context, user, restaurant, id int64, c PickupCompletion) (domain.Order, error) {
-	if err := s.authorize(user, restaurant); err != nil {
+	if err := s.authorize(ctx, user, restaurant); err != nil {
 		return domain.Order{}, err
 	}
 	if id <= 0 {
@@ -74,7 +74,7 @@ func validatePickup(c PickupCompletion) error {
 // VerifyPickup allows staff to identify the customer before taking physical POS payment.
 // Completion always re-verifies the token while holding the same order lock.
 func (s *Restaurants) VerifyPickup(ctx context.Context, user, restaurant, id int64, code string) (domain.Order, error) {
-	if err := s.authorize(user, restaurant); err != nil {
+	if err := s.authorize(ctx, user, restaurant); err != nil {
 		return domain.Order{}, err
 	}
 	if id <= 0 {

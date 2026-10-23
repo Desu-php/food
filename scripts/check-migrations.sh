@@ -3,7 +3,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 project=${1:-food-events-test}
-for service in catalog orders delivery notifications; do
+for service in catalog orders delivery notifications auth; do
   schema="migration_check_$service"
   {
     printf 'CREATE SCHEMA %s; SET search_path TO %s;\n' "$schema" "$schema"

@@ -5,6 +5,7 @@
 .aws
 .agents
 .codex
+.local
 .idea
 **/bin
 **/*.test

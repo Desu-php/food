@@ -1,0 +1,110 @@
+# Independent Auth deployment and opt-in migration of the existing APIs.
+# Development defaults use HTTP loopback; production requires HTTPS issuer/JWKS
+# and encrypted internal authority/revocation endpoints (see docs/auth-service.md).
+services:
+  auth-postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: auth_admin
+      POSTGRES_PASSWORD: ${AUTH_POSTGRES_PASSWORD:?set AUTH_POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+    volumes: [auth_data:/var/lib/postgresql]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "auth_admin", "-d", "postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [backend]
+    restart: unless-stopped
+
+  init-auth-database:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_PASSWORD: ${AUTH_POSTGRES_PASSWORD:?set AUTH_POSTGRES_PASSWORD}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD}
+    volumes: [./init-auth-database.sh:/init-auth-database.sh:ro]
+    entrypoint: ["/bin/sh", "/init-auth-database.sh"]
+    depends_on:
+      auth-postgres: {condition: service_healthy}
+    networks: [backend]
+    restart: "no"
+
+  migrate-auth:
+    image: migrate/migrate:v4.18.3
+    volumes: [../services/auth/migrations:/migrations:ro]
+    command: ["-path=/migrations", "-database=postgres://auth_service:${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD}@auth-postgres:5432/auth?sslmode=disable", "up"]
+    depends_on:
+      init-auth-database: {condition: service_completed_successfully}
+    networks: [backend]
+    restart: "no"
+
+  auth:
+    build:
+      context: ..
+      dockerfile: services/auth/Dockerfile
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: postgres://auth_service:${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD}@auth-postgres:5432/auth?sslmode=disable
+      HTTP_ADDR: :8084
+      AUTH_INTERNAL_HTTP_ADDR: :8086
+      AUTH_ISSUER: ${AUTH_ISSUER:-http://localhost:8084}
+      AUTH_AUDIENCE: ${AUTH_AUDIENCE:-food-api}
+      AUTH_ACTIVE_KID: ${AUTH_ACTIVE_KID:-initial}
+      AUTH_SIGNING_KEYS_FILE: /run/auth/keys.json
+      AUTH_CSRF_KEY_FILE: /run/auth/csrf.key
+      AUTH_SERVICE_KEY_FILE: /run/auth/service.key
+      AUTH_NOTIFICATIONS_URL: ${AUTH_NOTIFICATIONS_URL:-http://notifications:8083}
+      AUTH_ACCESS_TTL: ${AUTH_ACCESS_TTL:-3m}
+      AUTH_SESSION_TTL: ${AUTH_SESSION_TTL:-720h}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
+      AUTH_ALLOW_UNVERIFIED_LOGIN: ${AUTH_ALLOW_UNVERIFIED_LOGIN:-false}
+      AUTH_ARGON_MEMORY_KIB: ${AUTH_ARGON_MEMORY_KIB:-19456}
+      AUTH_ARGON_ITERATIONS: ${AUTH_ARGON_ITERATIONS:-2}
+      AUTH_ARGON_PARALLELISM: ${AUTH_ARGON_PARALLELISM:-1}
+      AUTH_HASH_CONCURRENCY: ${AUTH_HASH_CONCURRENCY:-2}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:9000}
+    volumes:
+      - ${AUTH_DEV_DIR:-../.local/auth}/keys.json:/run/auth/keys.json:ro
+      - ${AUTH_DEV_DIR:-../.local/auth}/csrf.key:/run/auth/csrf.key:ro
+      - ${AUTH_DEV_DIR:-../.local/auth}/service.key:/run/auth/service.key:ro
+    ports: ["127.0.0.1:${AUTH_PORT:-8084}:8084"]
+    depends_on:
+      migrate-auth: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8084/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend, edge]
+    restart: unless-stopped
+    stop_grace_period: 20s
+
+  catalog:
+    environment: &backend-auth
+      DEV_AUTH_ENABLED: "false"
+      OIDC_ISSUER: ${AUTH_ISSUER:-http://localhost:8084}
+      OIDC_JWKS_URL: ${AUTH_JWKS_URL:-http://auth:8084/.well-known/jwks.json}
+      OIDC_AUDIENCE: ${AUTH_AUDIENCE:-food-api}
+      AUTH_IDENTITIES_FILE: ""
+      AUTH_PRINCIPAL_URL: ${AUTH_PRINCIPAL_URL:-http://auth:8086}
+      AUTH_SERVICE_KEY_FILE: /run/auth/service.key
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:9000}
+    volumes: &backend-auth-volumes
+      - ${AUTH_DEV_DIR:-../.local/auth}/service.key:/run/auth/service.key:ro
+  orders:
+    environment: *backend-auth
+    volumes: *backend-auth-volumes
+  delivery:
+    environment: *backend-auth
+    volumes: *backend-auth-volumes
+  notifications:
+    environment: *backend-auth
+    volumes: *backend-auth-volumes
+  notification-push-worker:
+    environment:
+      AUTH_PRINCIPAL_URL: ${AUTH_PRINCIPAL_URL:-http://auth:8086}
+      AUTH_SERVICE_KEY_FILE: /run/auth/service.key
+    volumes: *backend-auth-volumes
+
+volumes:
+  auth_data:

@@ -1,8 +1,14 @@
 # Этап 9: Security & Reliability Hardening
 
+Stage 18 добавляет независимый Auth с JWT/JWKS, PostgreSQL credentials/sessions и
+проверкой актуальных полномочий через private authority. Новый режим и миграция:
+[auth-service.md](auth-service.md), [ADR 0013](adr/0013-independent-auth-service.md).
+Ниже сохранён legacy OIDC/registry runbook; Kafka/Inbox/Outbox/quarantine инварианты
+действуют в обоих режимах. Не удаляйте старый IdP до проверки новой конфигурации.
+
 ## HTTP identity
 
-Catalog, Orders и Delivery проверяют JWT Bearer через `coreos/go-oidc/v3` и
+Catalog, Orders, Delivery и Notifications проверяют JWT Bearer через `coreos/go-oidc/v3` и
 доверенный JWKS. Проверяются подпись, точный issuer, audience конкретного API,
 обязательный exp и nbf. Разрешены только RS256 и ES256; HMAC и `none` запрещены.
 JWKS URL задаёт оператор, параметры `jku`/`x5u` из токена не определяют источник
@@ -27,8 +33,12 @@ export AUTH_IDENTITIES_FILE=/etc/food/orders-identities.json
 go run ./services/orders/cmd/api
 ```
 
-Для Compose используйте `CATALOG_OIDC_AUDIENCE=food-catalog`,
-`ORDERS_OIDC_AUDIENCE=food-orders`, `DELIVERY_OIDC_AUDIENCE=food-delivery`.
+Для MVP SPA задайте общий `OIDC_AUDIENCE=food-api`: Catalog, Orders, Delivery и
+Notifications наследуют его в Compose. Service-specific overrides должны быть
+пустыми либо совпадать с общим значением. Раздельные audiences по-прежнему доступны:
+`CATALOG_OIDC_AUDIENCE=food-catalog`, `ORDERS_OIDC_AUDIENCE=food-orders`,
+`DELIVERY_OIDC_AUDIENCE=food-delivery`, `NOTIFICATIONS_OIDC_AUDIENCE=food-notifications`;
+тогда frontend должен получать access tokens для соответствующих ресурсов.
 Передайте остальные переменные через отдельный production env и смонтируйте
 реестр read-only в каждый API через Compose override, например:
 
@@ -40,7 +50,7 @@ services:
 ```
 
 `AUTH_IDENTITIES_FILE=/etc/food/identities.json` — путь **в контейнере**.
-Для Catalog и Delivery задайте собственные mounts аналогично. Пример формата
+Для Catalog, Delivery и Notifications задайте mounts того же актуального реестра аналогично. Пример формата
 есть в [auth-identities.example.json](../deploy/auth-identities.example.json).
 Файл не содержит токенов и паролей, но позволяет выдавать права: изменять его
 должны только администраторы deployment. При отсутствии файла реестр пуст,
@@ -67,13 +77,14 @@ JSON не предоставляют полномочий. Клиенты не �
 Restaurant staff не получает права production Saga retry автоматически.
 JWT/HTTP остаются в adapters/bootstrap. Application получает внутренние ID и
 копии серверных grants; Domain не импортирует security. Общий модуль
-`platform/security` нужен только для одинаковой проверки JWT в трёх API.
+`platform/security` нужен для одинаковой проверки JWT в четырёх API.
 Он не владеет пользователями, БД или бизнес-состояниями.
 
 GET/HEAD каталога, `/health` и `/ready` остаются анонимными. Любая мутация Catalog
 проверяет principal и ресурс в своём handler до вызова application.
-Notifications и технические worker listeners имеют только health/readiness,
-действий над ресурсами через HTTP у них нет. Внутренний Catalog quote — чтение
+Notifications также предоставляет защищённый API `/v1/devices`; его `/metrics`
+требует admin. Технические worker listeners имеют только health/readiness.
+Внутренний Catalog quote — чтение
 каталога через прежний отдельный приватный listener; сетевое ограничение сохраняется.
 Сервисная mTLS/OAuth2 client credentials для этого соединения не добавлялись.
 
@@ -82,6 +93,32 @@ Notifications и технические worker listeners имеют только
 `DEV_RESTAURANT_GRANTS`. Orders/Delivery сохраняют существующие dev headers и
 grants. В production dev mode запрещён, любые `X-Dev-*` на API отклоняются.
 Dev mode предназначен исключительно для доверенного локального окружения.
+
+### Profile и браузерный OIDC (Stage 16)
+
+Orders `GET /v1/auth/me` возвращает только публичный DTO из Principal:
+`user_id`, `roles`, `restaurant_ids`, `permissions`, всегда с no-store и массивами
+вместо null. Authentication проверяет, кто предъявил access token; authorization
+по серверному реестру и resource gates определяет, какие действия разрешены.
+Файловые привязки требуют административной выдачи и restart всех API: self-service
+выдачи ролей нет. В будущем потребуется управляемое хранилище grants с аудитом и
+согласованным отзывом, отдельный User Service сейчас не создаётся.
+
+Frontend public Client ID идентифицирует приложение в Authorization Code + PKCE
+S256; API audience обозначает получателя access token. Они различаются. Проверка
+JWT дополнена обязательным маркером access token: подписанный Keycloak payload
+typ=Bearer либо protected JOSE typ=at+jwt/application/at+jwt без payload typ.
+ID/refresh token и untyped JWT не принимаются даже с API audience. Убедитесь в
+совместимости текущего IdP до rollout. Claims не становятся источником прав.
+
+CORS_ALLOWED_ORIGINS разрешает только точные origins публичных API, без wildcard;
+production требует HTTPS. Authorization/Content-Type/Idempotency-Key/X-Request-ID
+разрешены, OPTIONS preflight обрабатывается до authentication. Cookies и dev
+identity headers через CORS не включаются. Internal API, health/readiness и metrics
+не получают CORS. CORS не заменяет сетевую изоляцию и серверную авторизацию.
+
+[Полный контракт Profile, identity mapping, ограничения реестра и HTTPS Keycloak
+runbook](auth-profile-oidc.md), [ADR 0012](adr/0012-auth-profile-and-oidc.md).
 
 ## Kafka: фиксация и карантин
 

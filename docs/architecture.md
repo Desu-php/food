@@ -1,5 +1,13 @@
 # Архитектура Catalog
 
+Stage 18: [независимый Auth и границы доверия](auth-service.md),
+[ADR 0013](adr/0013-independent-auth-service.md). Auth владеет отдельной PostgreSQL,
+JWT/JWKS, users и sessions. platform/security проверяет JWT и получает текущие
+полномочия через private Auth API. Orders/Delivery принимают authorization dependency
+в application без импорта HTTP/security в бизнес-слой; ownership/domain gates
+сохраняются. Notifications проверяет права перед Send и принимает идемпотентный
+отзыв устройств через durable Auth revocation queue. Другие сервисы не читают Auth DB.
+
 ## Направление зависимостей
 
 ```mermaid

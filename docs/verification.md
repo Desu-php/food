@@ -517,3 +517,90 @@ lease fencing после неоднозначного Send, concurrent workers, 
 worker и реальную проверку актуальности CourierOffer через Delivery API.
 Реальный FCM smoke не запускался: для него нужны отдельные project/installation
 и ADC; автоматические provider tests используют HTTP transport официального SDK.
+
+## Stage 16: Auth Profile API и OIDC — 2026-10-22
+
+Go 1.27.2, Docker Engine 29.9.1. Успешно выполнены:
+
+- `scripts/check.sh`: gofmt, go vet, go test, go test -race для всех шести
+  модулей, независимые GOWORK=off builds и Compose validation, включая OIDC overlay.
+- `scripts/test-integration.sh`: PostgreSQL/Redpanda/Redis, migration round trips
+  всех четырёх сервисов и весь integration suite под race detector. Новый тест
+  соединяет подписанный JWT/JWKS, Profile, restaurant grants и DELIVERY/PICKUP gates.
+- `scripts/verify-push.py` с fake FCM и `scripts/verify-pricing.py`: полный
+  deployment, авторизация, POS, Saga и неизменяемые pricing snapshots.
+- `scripts/verify-offers.py` и `scripts/verify-pickup.py`: сохранены конкурентное
+  принятие/TTL/cooldown, восстановление после broker outage, cooking gate,
+  самовывоз без Delivery/Saga, безопасная POS-выдача и совместный DELIVERY lifecycle.
+- `scripts/verify-auth.py`: настоящий Keycloak 26.8.1 по HTTPS, импорт realm,
+  public SPA Code + PKCE S256, отказ без PKCE, access/ID/refresh token distinction,
+  403 до серверного binding, корректный профиль после registry update/restart,
+  CORS и один access token на четырёх API с независимыми resource permissions.
+- После последнего дополнения DTO tests повторены `go test -race` для
+  platform/security и Orders HTTP; в том числе проверены непустые permissions.
+
+В sandbox запрещены локальные sockets и стандартный Go build cache недоступен
+для записи: тесты выполнены с разрешением на sockets/Docker и GOCACHE в /tmp.
+Первый новый PostgreSQL-тест ожидал WAITING_COURIER раньше remote CreateDelivery
+result; исправлено только ожидание промежуточного ACCEPTED, повторный suite прошёл.
+Keycloak error redirect без PKCE проверяется как 302 с invalid_request.
+
+Тестовые Compose projects, volumes и временные TLS/credentials удалены. Работающее
+окружение deploy не изменялось. Реальный Firebase не вызывался. Браузерная PWA
+не запускалась: frontend находится в отдельном репозитории; env export и её
+конкретные callback routes требуют проверки там. Git commits не выполнялись.
+
+## Stage 18: Independent Auth Service — 2026-10-24
+
+Добавлен независимый Go module Auth со своей PostgreSQL и migration round trip.
+Изучены platform/security, legacy JWT/OIDC/registry и актуальный контракт отдельной
+Quasar PWA. Frontend не менялся; новый контракт описан в auth-service.md.
+
+Итоговые выполненные проверки:
+
+| Проверка | Результат |
+|---|---|
+| `scripts/check.sh` | PASS: gofmt, go vet, unit/HTTP, race, GOWORK=off build всех семи Go modules, Compose validation обоих auth overlays |
+| `scripts/test-integration.sh` | PASS: PostgreSQL/Redis/Redpanda, все Go integration/race, vet, up/down migrations Catalog/Orders/Delivery/Notifications/Auth |
+| `python3 scripts/verify-auth-service.py` | PASS: реальный новый Auth и JWT в четырёх API, регистрация/login, миграция IDs, refresh/reuse/concurrency, logout/all, запрет self-admin, live grants, device revocation, CSRF |
+| `python3 scripts/verify-auth.py` | PASS: сохранённый HTTPS Keycloak Code+PKCE, registry, token types, profile, CORS |
+| `python3 scripts/verify-push.py` | PASS: устройства, grants, worker concurrency, replay, identifier redaction; fake FCM |
+| `python3 scripts/verify-pricing.py` | PASS: pricing, snapshots, POS, Saga |
+| `python3 scripts/verify-offers.py` | PASS в повторном итоговом прогоне: offers, ownership, concurrent acceptance, broker recovery, cancellation/expiry |
+| `python3 scripts/verify-pickup.py` | PASS: pickup handoff/POS, restart/replay, отсутствие Delivery/Saga для pickup |
+| `python3 -m py_compile scripts/verify-auth.py scripts/verify-auth-service.py` | PASS |
+| `git diff --check` | PASS |
+
+Auth unit tests проверяют email/password invariants, Argon2id random salts и hash
+verification, ограничение ресурсов, JWT expiry/nbf/signature/audience/issuer/type,
+public JWKS и перекрытие signing keys, cookie attributes и CSRF session binding.
+Production config tests запрещают unverified login, insecure cookies и HTTP trusted
+endpoints. HTTP/SQL tests используют настоящую выделенную PostgreSQL: register и
+duplicate email, pending verification, invalid password/unknown email/brute force,
+atomic rotation/reuse и 12 конкурентных refresh, logout/all, password change,
+session ownership, me, role escalation denial, live authority, grants revocation,
+foreign courier binding conflict с откатом, исходные migration IDs, lease fencing,
+concurrent cleanup, disable/last-admin protection и сброс verification при смене email.
+
+Уточнения результатов и ограничения:
+
+- Первый legacy OIDC E2E не запустился из-за рабочего Keycloak на порту 8443.
+  Тест получил отдельный порт 28443 (TEST_KEYCLOAK_PORT); обычный overlay сохраняет
+  прежний 8443 по умолчанию. Повторный HTTPS сценарий полностью прошёл.
+- В одном раннем offers E2E был HTTP 500 при decline; в одном полном integration
+  прогоне TestOfferEventsTransactionalAndIdempotent не получил due dispatch claim.
+  Итоговый offers E2E прошёл; сам SQL test дополнительно прошёл 50 повторов с race,
+  а финальный полный integration run прошёл без ошибок. Причина единичных прежних
+  отказов достоверно не установлена. Добавлен безопасный диагностический state
+  при следующем отказе claim; алгоритм dispatch/offer decisions не изменялся.
+- GitHub Actions workflow обновлён новым Auth E2E job и проверкой седьмого модуля.
+  Удалённый GitHub CI не запускался: изменения не коммитились и не публиковались.
+- Рабочий deploy/Keycloak не переключался. Реальные аккаунты не мигрировались:
+  готова проверенная transactional import/provision процедура без выдуманных email,
+  паролей или изменения бизнес-ID. Все тестовые projects/volumes удалены.
+- Реальная почта, recovery, Firebase и браузерная PWA не проверялись. Почтового
+  канала нет: production public signup остаётся PENDING_VERIFICATION без login,
+  verification/recovery возвращают 503; dev opt-in запрещён в production.
+  Production TLS/secret storage, нагрузочные параметры Argon2id и HA Auth/DB требуют
+  deployment-конфигурации. Online authority не превращает отзыв в распределённую
+  транзакцию с уже выполняющимся бизнес-запросом; BFF описан как возможная эволюция.

@@ -57,7 +57,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 	}
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           auth.Wrap(httpadapter.NewHandler(restaurants, menu, ready, logger, cfg.RequestTimeout, application.NewPricing(repo))),
+		Handler:           auth.CORS(auth.Wrap(httpadapter.NewHandler(restaurants, menu, ready, logger, cfg.RequestTimeout, application.NewPricing(repo))), "/restaurants"),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,
 		WriteTimeout:      cfg.WriteTimeout,

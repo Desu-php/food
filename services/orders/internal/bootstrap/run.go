@@ -61,6 +61,16 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 		cfg.RestaurantGrants = auth.RestaurantGrants()
 	}
 	orders := application.NewOrders(repo, client, fulfillment)
+	restaurants := application.NewRestaurants(repo, cfg.RestaurantGrants, fulfillment)
+	if cfg.Authentication.AuthServiceURL != "" {
+		restaurants.WithAuthorization(func(ctx context.Context, user, restaurant int64) error {
+			p, ok := security.FromContext(ctx)
+			if !ok || p.UserID != user || !p.Restaurant(restaurant) {
+				return application.ErrForbidden
+			}
+			return nil
+		})
+	}
 	ready := func(ctx context.Context) error { _, err := pool.Exec(ctx, schemaCheck); return err }
 	if cfg.DevAuthEnabled {
 		logger.Warn("development identity enabled; do not expose this API to untrusted clients")
@@ -68,7 +78,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           auth.Wrap(httpadapter.NewHandler(orders, ready, logger, cfg.RequestTimeout, cfg.DevAuthEnabled, application.NewRestaurants(repo, cfg.RestaurantGrants, fulfillment))),
+		Handler:           auth.CORS(auth.Wrap(httpadapter.NewHandler(orders, ready, logger, cfg.RequestTimeout, cfg.DevAuthEnabled, restaurants)), "/v1/auth/me", "/orders", "/restaurants"),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,
 		WriteTimeout:      cfg.WriteTimeout,

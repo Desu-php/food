@@ -463,7 +463,9 @@ func TestOfferEventsTransactionalAndIdempotent(t *testing.T) {
 	cfg := application.DefaultDispatchConfig()
 	claim, ok, err := r.ClaimDispatch(ctx, cfg)
 	if err != nil || !ok {
-		t.Fatal(ok, err)
+		var state []byte
+		stateErr := r.pool.QueryRow(ctx, `SELECT json_build_object('status',status,'preparation_started',preparation_started,'paused',dispatch_paused,'next_at',dispatch_next_at,'database_time',clock_timestamp(),'attempts',dispatch_attempts,'lease_until',dispatch_lease_until,'pending_offer',EXISTS(SELECT FROM courier_offers WHERE delivery_id=deliveries.id AND status='PENDING'),'blocked',EXISTS(SELECT FROM order_streams WHERE order_id=deliveries.order_id AND dispatch_blocked),'quarantine',EXISTS(SELECT FROM consumer_quarantine WHERE resolved_at IS NULL)) FROM deliveries WHERE order_id=42`).Scan(&state)
+		t.Fatalf("dispatch claim: ok=%v err=%v state=%s state_err=%v", ok, err, state, stateErr)
 	}
 	if _, err = r.OfferDispatch(ctx, claim, candidates(c.ID), cfg.Cooldown); err == nil {
 		t.Fatal("offer persisted without event")

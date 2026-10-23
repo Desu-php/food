@@ -15,7 +15,7 @@ func (s *Delivery) UpdateLocation(ctx context.Context, courier int64, p geo.Poin
 	return s.automatic.UpdateLocation(ctx, courier, p)
 }
 func (s *Delivery) RetryDispatch(ctx context.Context, user, id int64) error {
-	if err := s.dispatch(user); err != nil {
+	if err := s.dispatch(ctx, user); err != nil {
 		return err
 	}
 	if id <= 0 {

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/go-jose/go-jose/v4"
 )
 
 type Principal struct {
@@ -43,12 +44,14 @@ func FromContext(ctx context.Context) (Principal, bool) {
 }
 
 type Config struct {
-	Environment               string
-	DevEnabled                bool
-	Issuer, Audience, JWKSURL string
-	Identities                []Principal
-	DevAdmins                 []int64
-	DevRestaurants            map[int64][]int64
+	AuthServiceURL, AuthServiceKey string
+	Environment                    string
+	DevEnabled                     bool
+	Issuer, Audience, JWKSURL      string
+	Identities                     []Principal
+	DevAdmins                      []int64
+	DevRestaurants                 map[int64][]int64
+	CORSOrigins                    []string
 }
 
 // Load reads a server-owned identity registry, never claims carrying client-chosen
@@ -59,6 +62,20 @@ func Load() (Config, error) {
 		c.Environment = "production"
 	}
 	var err error
+	c.AuthServiceURL = os.Getenv("AUTH_PRINCIPAL_URL")
+	c.AuthServiceKey = os.Getenv("AUTH_SERVICE_KEY")
+	if path := os.Getenv("AUTH_SERVICE_KEY_FILE"); path != "" {
+		body, e := os.ReadFile(path)
+		if e != nil {
+			return c, errors.New("cannot read AUTH_SERVICE_KEY_FILE")
+		}
+		c.AuthServiceKey = strings.TrimSpace(string(body))
+	}
+	if raw := os.Getenv("CORS_ALLOWED_ORIGINS"); raw != "" {
+		for _, origin := range strings.Split(raw, ",") {
+			c.CORSOrigins = append(c.CORSOrigins, strings.TrimSpace(origin))
+		}
+	}
 	if raw := os.Getenv("DEV_AUTH_ENABLED"); raw != "" {
 		c.DevEnabled, err = strconv.ParseBool(raw)
 		if err != nil {
@@ -66,6 +83,9 @@ func Load() (Config, error) {
 		}
 	}
 	if path := os.Getenv("AUTH_IDENTITIES_FILE"); path != "" {
+		if c.AuthServiceURL != "" {
+			return c, errors.New("remove AUTH_IDENTITIES_FILE only after importing bindings into Auth; mixed authorities are forbidden")
+		}
 		f, err := os.Open(path)
 		if err != nil {
 			return c, errors.New("cannot open AUTH_IDENTITIES_FILE")
@@ -111,6 +131,7 @@ func Load() (Config, error) {
 }
 
 type Authenticator struct {
+	authority  *Authority
 	cfg        Config
 	verifier   *oidc.IDTokenVerifier
 	identities map[string]Principal
@@ -123,6 +144,13 @@ func New(c Config) (*Authenticator, error) {
 	if c.DevEnabled && c.Environment != "development" && c.Environment != "test" {
 		return nil, errors.New("dev authentication forbidden outside development/test")
 	}
+	for _, origin := range c.CORSOrigins {
+		u, err := url.Parse(origin)
+		if err != nil || u.Host == "" || u.Hostname() == "" || strings.ContainsAny(origin, "*\r\n\t ") || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Path != "" || (u.Scheme != "https" && !(c.Environment != "production" && u.Scheme == "http")) {
+			return nil, errors.New("CORS_ALLOWED_ORIGINS requires exact HTTP(S) origins; production requires HTTPS")
+		}
+	}
+	c.CORSOrigins = slices.Clone(c.CORSOrigins)
 	c.DevAdmins = slices.Clone(c.DevAdmins)
 	grants := make(map[int64][]int64, len(c.DevRestaurants))
 	for user, ids := range c.DevRestaurants {
@@ -131,7 +159,7 @@ func New(c Config) (*Authenticator, error) {
 	c.DevRestaurants = grants
 	a := &Authenticator{cfg: c, identities: map[string]Principal{}}
 	if c.DevEnabled {
-		if c.Issuer != "" || c.Audience != "" || c.JWKSURL != "" {
+		if c.Issuer != "" || c.Audience != "" || c.JWKSURL != "" || c.AuthServiceURL != "" {
 			return nil, errors.New("OIDC and dev authentication are mutually exclusive")
 		}
 		return a, nil
@@ -142,8 +170,18 @@ func New(c Config) (*Authenticator, error) {
 	}
 	for _, raw := range []string{c.Issuer, c.JWKSURL} {
 		u, e := url.Parse(raw)
-		if e != nil || u.Host == "" || u.User != nil || u.Fragment != "" || (u.Scheme != "https" && !(c.Environment == "test" && u.Scheme == "http")) {
+		if e != nil || u.Host == "" || u.User != nil || u.Fragment != "" || (u.Scheme != "https" && !((c.Environment == "test" || c.Environment == "development" && c.AuthServiceURL != "") && u.Scheme == "http")) {
 			return nil, errors.New("OIDC endpoints must be trusted HTTPS URLs")
+		}
+	}
+	if c.AuthServiceURL != "" {
+		if len(c.Identities) != 0 {
+			return nil, errors.New("Auth authority and static identities are mutually exclusive")
+		}
+		var err error
+		a.authority, err = NewAuthority(c.AuthServiceURL, c.AuthServiceKey, c.Environment)
+		if err != nil {
+			return nil, err
 		}
 	}
 	users := map[int64]bool{}
@@ -272,14 +310,39 @@ func (a *Authenticator) Wrap(next http.Handler) http.Handler {
 		}
 		// Explicitly reject future nbf and require exp; go-oidc verifies issuer, aud, exp and signature.
 		var claims struct {
-			NotBefore int64 `json:"nbf"`
-			Expires   int64 `json:"exp"`
+			NotBefore int64  `json:"nbf"`
+			Expires   int64  `json:"exp"`
+			Type      string `json:"typ"`
 		}
 		if token.Claims(&claims) != nil || claims.Expires <= 0 || claims.NotBefore > time.Now().Unix() {
 			deny(w, 401)
 			return
 		}
+		// go-oidc verifies JWTs but does not distinguish ID tokens from access
+		// tokens. Accept Keycloak's signed Bearer claim or RFC 9068's protected
+		// access-token header. Untyped JWTs and ID tokens fail closed.
+		signed, err := jose.ParseSignedCompact(parts[1], []jose.SignatureAlgorithm{jose.RS256, jose.ES256})
+		if err != nil || len(signed.Signatures) != 1 {
+			deny(w, 401)
+			return
+		}
+		typ, _ := signed.Signatures[0].Protected.ExtraHeaders[jose.HeaderType].(string)
+		keycloakAccess := claims.Type == "Bearer" && (typ == "" || typ == "JWT" || typ == "at+jwt" || typ == "application/at+jwt")
+		rfcAccess := claims.Type == "" && (typ == "at+jwt" || typ == "application/at+jwt")
+		if !keycloakAccess && !rfcAccess {
+			deny(w, 401)
+			return
+		}
 		p, ok := a.identities[token.Subject]
+		if a.authority != nil {
+			var status int
+			p, status = a.authority.Principal(r.Context(), parts[1])
+			if status != 200 {
+				deny(w, status)
+				return
+			}
+			ok = p.Subject == token.Subject
+		}
 		if !ok {
 			deny(w, 403)
 			return

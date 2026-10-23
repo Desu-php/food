@@ -19,24 +19,32 @@ type Repository interface {
 	Change(context.Context, int64, string, func(*domain.Delivery) error) (domain.Delivery, error)
 }
 type Delivery struct {
-	tracking    *Tracking
-	offers      *Offers
-	automatic   *Dispatch
-	repo        Repository
-	dispatchers []int64
+	authorization func(context.Context, int64) error
+	tracking      *Tracking
+	offers        *Offers
+	automatic     *Dispatch
+	repo          Repository
+	dispatchers   []int64
 }
 
 func NewDelivery(repo Repository, dispatchers []int64) *Delivery {
 	return &Delivery{repo: repo, dispatchers: slices.Clone(dispatchers)}
 }
-func (s *Delivery) dispatch(user int64) error {
+func (s *Delivery) WithAuthorization(check func(context.Context, int64) error) *Delivery {
+	s.authorization = check
+	return s
+}
+func (s *Delivery) dispatch(ctx context.Context, user int64) error {
+	if s.authorization != nil {
+		return s.authorization(ctx, user)
+	}
 	if user <= 0 || !slices.Contains(s.dispatchers, user) {
 		return domain.ErrForbidden
 	}
 	return nil
 }
 func (s *Delivery) CreateCourier(ctx context.Context, user int64, name string) (domain.Courier, error) {
-	if err := s.dispatch(user); err != nil {
+	if err := s.dispatch(ctx, user); err != nil {
 		return domain.Courier{}, err
 	}
 	c, err := domain.NewCourier(name, time.Now())
@@ -47,7 +55,7 @@ func (s *Delivery) CreateCourier(ctx context.Context, user int64, name string) (
 }
 func validPage(after int64, limit int) bool { return after >= 0 && limit >= 1 && limit <= 100 }
 func (s *Delivery) Couriers(ctx context.Context, user, after int64, limit int, available ...bool) ([]domain.Courier, error) {
-	if err := s.dispatch(user); err != nil {
+	if err := s.dispatch(ctx, user); err != nil {
 		return nil, err
 	}
 	if !validPage(after, limit) {
@@ -62,7 +70,7 @@ func (s *Delivery) Couriers(ctx context.Context, user, after int64, limit int, a
 // Dispatcher reads are unrestricted within the service; courier reads are scoped to assignment.
 func (s *Delivery) List(ctx context.Context, user, courier, after int64, limit int) ([]domain.Delivery, error) {
 	if courier <= 0 {
-		if err := s.dispatch(user); err != nil {
+		if err := s.dispatch(ctx, user); err != nil {
 			return nil, err
 		}
 	}
@@ -73,7 +81,7 @@ func (s *Delivery) List(ctx context.Context, user, courier, after int64, limit i
 }
 func (s *Delivery) Get(ctx context.Context, user, courier, id int64) (domain.Delivery, error) {
 	if courier <= 0 {
-		if err := s.dispatch(user); err != nil {
+		if err := s.dispatch(ctx, user); err != nil {
 			return domain.Delivery{}, err
 		}
 	}
@@ -83,7 +91,7 @@ func (s *Delivery) Get(ctx context.Context, user, courier, id int64) (domain.Del
 	return s.repo.Get(ctx, courier, id)
 }
 func (s *Delivery) Assign(ctx context.Context, user, id, courier int64) (domain.Delivery, error) {
-	if err := s.dispatch(user); err != nil {
+	if err := s.dispatch(ctx, user); err != nil {
 		return domain.Delivery{}, err
 	}
 	if id <= 0 || courier <= 0 {

@@ -1,0 +1,2 @@
+DROP TABLE auth_device_revocations,auth_audit,auth_legacy_identities,auth_rate_limits,auth_refresh_tokens,auth_sessions,auth_courier_bindings,auth_restaurant_memberships,auth_users;
+DROP SEQUENCE auth_customer_ids;

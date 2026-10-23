@@ -10,9 +10,19 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type PushStore struct{ pool *pgxpool.Pool }
+type DeviceAuthority interface {
+	DeviceAuthorized(context.Context, int64, string, int64) (bool, error)
+}
+type PushStore struct {
+	pool      *pgxpool.Pool
+	authority DeviceAuthority
+}
 
-func NewPushStore(pool *pgxpool.Pool) *PushStore { return &PushStore{pool} }
+func NewPushStore(pool *pgxpool.Pool) *PushStore { return &PushStore{pool: pool} }
+func (r *PushStore) WithAuthority(authority DeviceAuthority) *PushStore {
+	r.authority = authority
+	return r
+}
 
 const deviceColumns = `id,owner_type,owner_id,registered_by,platform,is_active,last_seen_at,created_at,updated_at`
 
@@ -66,6 +76,10 @@ func (r *PushStore) Deactivate(ctx context.Context, user, id int64) error {
 		return domain.ErrNotFound
 	}
 	return nil
+}
+func (r *PushStore) RevokeUserDevices(ctx context.Context, user int64, before time.Time) error {
+	_, err := r.pool.Exec(ctx, `UPDATE device_registrations SET is_active=false,installation_id='revoked-device:'||id,updated_at=clock_timestamp() WHERE registered_by=$1 AND is_active AND created_at<=$2`, user, before)
+	return err
 }
 func (r *PushStore) PruneDevices(ctx context.Context, stale time.Duration) error {
 	_, err := r.pool.Exec(ctx, `WITH old AS(SELECT id FROM device_registrations WHERE is_active AND last_seen_at<clock_timestamp()-$1*interval '1 millisecond' ORDER BY last_seen_at,id FOR UPDATE SKIP LOCKED LIMIT 1000) UPDATE device_registrations d SET is_active=false,installation_id='revoked-device:'||d.id,updated_at=clock_timestamp() FROM old WHERE d.id=old.id`, stale.Milliseconds())

@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -57,7 +59,7 @@ func TestJWTTrustBoundaryAndRotation(t *testing.T) {
 		return token
 	}
 	claims := func() map[string]any {
-		return map[string]any{"iss": "https://issuer.example", "aud": "food-api", "sub": "external|opaque-123", "exp": time.Now().Add(time.Hour).Unix(), "roles": []string{"admin"}, "customer_id": 999}
+		return map[string]any{"typ": "Bearer", "iss": "https://issuer.example", "aud": "food-api", "sub": "external|opaque-123", "exp": time.Now().Add(time.Hour).Unix(), "roles": []string{"admin"}, "customer_id": 999}
 	}
 	h := auth.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p, ok := FromContext(r.Context())
@@ -80,6 +82,8 @@ func TestJWTTrustBoundaryAndRotation(t *testing.T) {
 		expected int
 	}{
 		{name: "valid opaque subject", expected: 204},
+		{name: "ID token even with API audience", change: func(c map[string]any) { c["typ"] = "ID" }, expected: 401},
+		{name: "untyped JWT", change: func(c map[string]any) { delete(c, "typ") }, expected: 401},
 		{name: "expired", change: func(c map[string]any) { c["exp"] = time.Now().Add(-time.Second).Unix() }, expected: 401},
 		{name: "no expiry", change: func(c map[string]any) { delete(c, "exp") }, expected: 401},
 		{name: "wrong issuer", change: func(c map[string]any) { c["iss"] = "https://attacker.example" }, expected: 401},
@@ -203,5 +207,54 @@ func TestProductionRejectsEveryDevIdentityHeader(t *testing.T) {
 		if w.Code != 401 {
 			t.Fatal(header, w.Code)
 		}
+	}
+}
+
+func TestRegistryIssuerNamespaceAndEnvironment(t *testing.T) {
+	for _, name := range []string{"DEV_AUTH_ENABLED", "DEV_ADMIN_IDS", "DEV_RESTAURANT_GRANTS", "CORS_ALLOWED_ORIGINS"} {
+		t.Setenv(name, "")
+	}
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("OIDC_ISSUER", "https://issuer.example/realms/food")
+	t.Setenv("OIDC_JWKS_URL", "https://issuer.example/realms/food/keys")
+	t.Setenv("OIDC_AUDIENCE", "food-api")
+	t.Setenv("CORS_ALLOWED_ORIGINS", "https://spa.example, https://staff.example")
+	path := filepath.Join(t.TempDir(), "identities.json")
+	t.Setenv("AUTH_IDENTITIES_FILE", path)
+	for _, tc := range []struct {
+		name, body string
+		valid      bool
+	}{
+		{"staff", `{"issuer":"https://issuer.example/realms/food","identities":[{"subject":"opaque-subject","user_id":10,"roles":["restaurant_staff"],"restaurants":[1,2],"permissions":[]}]}`, true},
+		{"foreign issuer", `{"issuer":"https://foreign.example","identities":[]}`, false},
+		{"unknown field", `{"issuer":"https://issuer.example/realms/food","self_admin":true,"identities":[]}`, false},
+		{"trailing JSON", `{"issuer":"https://issuer.example/realms/food","identities":[]} {}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := os.WriteFile(path, []byte(tc.body), 0600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := Load()
+			if (err == nil) != tc.valid {
+				t.Fatal("registry validation", err)
+			}
+			if !tc.valid {
+				return
+			}
+			auth, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(cfg.CORSOrigins) != 2 || cfg.CORSOrigins[1] != "https://staff.example" || !auth.identities["opaque-subject"].Restaurant(2) {
+				t.Fatal("mapping lost")
+			}
+			// Later changes to the caller's config cannot change loaded grants.
+			cfg.Identities[0].Restaurants[0] = 999
+			grants := auth.RestaurantGrants()
+			grants[10][1] = 999
+			if !auth.identities["opaque-subject"].Restaurant(1) || !auth.identities["opaque-subject"].Restaurant(2) {
+				t.Fatal("mutable registry grants escaped")
+			}
+		})
 	}
 }

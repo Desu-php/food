@@ -105,6 +105,12 @@ func NewHandler(orders *application.Orders, ready func(context.Context) error, l
 		h.restaurants = restaurants[0]
 	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/auth/me", h.profile)
+	mux.HandleFunc("/v1/auth/me", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Allow", "GET, HEAD")
+		h.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	})
 	mux.HandleFunc("GET /restaurants/{restaurant}/orders", h.restaurantAction)
 	mux.HandleFunc("GET /restaurants/{restaurant}/orders/{id}/saga", h.restaurantAction)
 	mux.HandleFunc("POST /restaurants/{restaurant}/orders/{id}/{action}", h.restaurantAction)

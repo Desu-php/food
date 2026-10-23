@@ -92,7 +92,18 @@ func (r *PushStore) ClaimPush(ctx context.Context, cfg application.PushConfig) (
 func (r *PushStore) Current(ctx context.Context, d domain.Delivery) (string, bool, error) {
 	var target string
 	var current bool
-	err := r.pool.QueryRow(ctx, `SELECT device.installation_id,(device.is_active AND device.owner_type=n.recipient_type AND device.owner_id=n.recipient_id AND p.claim_token=$2::uuid AND p.status='PROCESSING' AND p.lease_until>clock_timestamp() AND n.status='PROCESSING' AND n.reason NOT IN ('offer_closed','order_terminal') AND n.expires_at>clock_timestamp() AND (n.kind<>'CourierOfferCreated' OR NOT EXISTS(SELECT FROM offer_states s WHERE s.offer_id=n.offer_id AND s.terminal))) FROM push_deliveries p JOIN notifications n ON n.id=p.notification_id JOIN device_registrations device ON device.id=p.device_id WHERE p.id=$1`, d.ID, d.Token).Scan(&target, &current)
+	var registeredBy, ownerID int64
+	var ownerType string
+	err := r.pool.QueryRow(ctx, `SELECT device.installation_id,device.registered_by,device.owner_type,device.owner_id,(device.is_active AND device.owner_type=n.recipient_type AND device.owner_id=n.recipient_id AND p.claim_token=$2::uuid AND p.status='PROCESSING' AND p.lease_until>clock_timestamp() AND n.status='PROCESSING' AND n.reason NOT IN ('offer_closed','order_terminal') AND n.expires_at>clock_timestamp() AND (n.kind<>'CourierOfferCreated' OR NOT EXISTS(SELECT FROM offer_states s WHERE s.offer_id=n.offer_id AND s.terminal))) FROM push_deliveries p JOIN notifications n ON n.id=p.notification_id JOIN device_registrations device ON device.id=p.device_id WHERE p.id=$1`, d.ID, d.Token).Scan(&target, &registeredBy, &ownerType, &ownerID, &current)
+	if err == nil && current && r.authority != nil {
+		current, err = r.authority.DeviceAuthorized(ctx, registeredBy, ownerType, ownerID)
+		if err != nil {
+			return "", false, err
+		}
+		if !current {
+			_, err = r.pool.Exec(ctx, `UPDATE device_registrations SET is_active=false,installation_id='revoked-device:'||id,updated_at=clock_timestamp() WHERE id=$1`, d.DeviceID)
+		}
+	}
 	return target, current, err
 }
 func finalize(ctx context.Context, tx pgx.Tx, id int64) error {

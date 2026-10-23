@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	"github.com/Desu-php/food/platform/security"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -85,6 +86,17 @@ func RunPush(ctx context.Context, c PushConfig, logger *slog.Logger) error {
 		return errors.New("push startup check failed: check migrations")
 	}
 	store := postgres.NewPushStore(pool)
+	if os.Getenv("AUTH_PRINCIPAL_URL") != "" {
+		authcfg, err := security.Load()
+		if err != nil {
+			return err
+		}
+		authority, err := security.NewAuthority(authcfg.AuthServiceURL, authcfg.AuthServiceKey, authcfg.Environment)
+		if err != nil {
+			return err
+		}
+		store.WithAuthority(authority)
+	}
 	cleanupCtx, cleanupCancel := context.WithTimeout(ctx, c.Worker.DBTimeout)
 	err = store.PruneDevices(cleanupCtx, c.Worker.StaleAfter)
 	cleanupCancel()

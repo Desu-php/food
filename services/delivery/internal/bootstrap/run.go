@@ -17,6 +17,7 @@ import (
 	"github.com/Desu-php/food/services/delivery/internal/adapters/postgres"
 	redisadapter "github.com/Desu-php/food/services/delivery/internal/adapters/redis"
 	"github.com/Desu-php/food/services/delivery/internal/application"
+	"github.com/Desu-php/food/services/delivery/internal/domain"
 )
 
 const schemaCheck = "SELECT d.delivery_latitude,d.delivery_longitude,r.customer_id,o.expires_at,d.latitude,d.longitude,d.dispatch_deadline,d.dispatch_attempts,d.id,d.order_id,d.version,d.order_version,d.ready,c.id,c.updated_at,d.preparation_started,p.delivery_id,p.id,e.event_id,e.stream,i.event_id FROM deliveries d LEFT JOIN delivery_requests r ON r.order_id=d.order_id LEFT JOIN couriers c ON c.id=d.courier_id LEFT JOIN payment_confirmations p ON p.delivery_id=d.id LEFT JOIN outbox_events e ON e.aggregate_id=d.id LEFT JOIN processed_events i ON false LEFT JOIN courier_offers o ON o.delivery_id=d.id LIMIT 0"
@@ -72,6 +73,15 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 	offers := application.NewOffers(repo)
 	tracking := application.NewTracking(repo, locations, cfg.LocationTTL, cfg.LocationMaxAccuracy)
 	service := application.NewDelivery(repo, cfg.DispatcherIDs).WithDispatch(dispatch).WithOffers(offers).WithTracking(tracking)
+	if cfg.Authentication.AuthServiceURL != "" {
+		service.WithAuthorization(func(ctx context.Context, user int64) error {
+			p, ok := security.FromContext(ctx)
+			if !ok || p.UserID != user || !(p.Has("dispatcher") || p.Has("admin")) || !p.Can("delivery:dispatch") {
+				return domain.ErrForbidden
+			}
+			return nil
+		})
+	}
 	workerCtx, stopWorker := context.WithCancel(ctx)
 	expiryDone := make(chan struct{})
 	go func() { defer close(expiryDone); offers.RunExpiry(workerCtx, logger) }()
@@ -90,7 +100,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpadapter.PushRelevance(auth.Wrap(httpadapter.NewHandler(service, ready, logger, cfg.RequestTimeout, cfg.DevAuthEnabled, cfg.Tracking)), repo, os.Getenv("PUSH_RELEVANCE_KEY")),
+		Handler:           auth.CORS(httpadapter.PushRelevance(auth.Wrap(httpadapter.NewHandler(service, ready, logger, cfg.RequestTimeout, cfg.DevAuthEnabled, cfg.Tracking)), repo, os.Getenv("PUSH_RELEVANCE_KEY")), "/orders", "/couriers", "/courier-offers", "/deliveries"),
 		BaseContext:       func(net.Listener) context.Context { return ctx },
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,

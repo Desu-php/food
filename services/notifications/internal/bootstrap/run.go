@@ -109,7 +109,10 @@ func Run(ctx context.Context, c Config, logger *slog.Logger, replay int64, recov
 		}
 		return source.Ping(ctx)
 	}
-	server := &http.Server{Addr: c.HTTPAddr, Handler: auth.Wrap(httpadapter.DeviceHandler(application.NewDevices(postgres.NewPushStore(pool)), httpadapter.NewHandler(ready), postgres.NewPushStore(pool).Metrics, authentication.DevEnabled)), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 16}
+	server := &http.Server{Addr: c.HTTPAddr, Handler: auth.CORS(auth.Wrap(httpadapter.DeviceHandler(application.NewDevices(postgres.NewPushStore(pool)), httpadapter.NewHandler(ready), postgres.NewPushStore(pool).Metrics, authentication.DevEnabled)), "/v1/devices"), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 16}
+	if authentication.AuthServiceURL != "" {
+		server.Handler = httpadapter.AuthRevocations(server.Handler, authentication.AuthServiceKey, postgres.NewPushStore(pool).RevokeUserDevices)
+	}
 	listener, err := net.Listen("tcp", c.HTTPAddr)
 	if err != nil {
 		return err
