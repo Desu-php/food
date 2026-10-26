@@ -26,8 +26,8 @@ Issuer и JWKS задаются явно из доверенной конфиг�
 
 ```bash
 export APP_ENV=production DEV_AUTH_ENABLED=false
-export OIDC_ISSUER=https://identity.example/realms/food
-export OIDC_JWKS_URL=https://identity.example/realms/food/protocol/openid-connect/certs
+export OIDC_ISSUER=https://identity.example
+export OIDC_JWKS_URL=https://identity.example/jwks.json
 export OIDC_AUDIENCE=food-orders
 export AUTH_IDENTITIES_FILE=/etc/food/orders-identities.json
 go run ./services/orders/cmd/api
@@ -106,7 +106,7 @@ Orders `GET /v1/auth/me` возвращает только публичный DT
 
 Frontend public Client ID идентифицирует приложение в Authorization Code + PKCE
 S256; API audience обозначает получателя access token. Они различаются. Проверка
-JWT дополнена обязательным маркером access token: подписанный Keycloak payload
+JWT дополнена обязательным маркером access token: подписанный JWT payload
 typ=Bearer либо protected JOSE typ=at+jwt/application/at+jwt без payload typ.
 ID/refresh token и untyped JWT не принимаются даже с API audience. Убедитесь в
 совместимости текущего IdP до rollout. Claims не становятся источником прав.
@@ -117,8 +117,7 @@ production требует HTTPS. Authorization/Content-Type/Idempotency-Key/X-Re
 identity headers через CORS не включаются. Internal API, health/readiness и metrics
 не получают CORS. CORS не заменяет сетевую изоляцию и серверную авторизацию.
 
-[Полный контракт Profile, identity mapping, ограничения реестра и HTTPS Keycloak
-runbook](auth-profile-oidc.md), [ADR 0012](adr/0012-auth-profile-and-oidc.md).
+[Контракт Profile, identity mapping и CORS](auth-profile-oidc.md), [ADR 0012](adr/0012-auth-profile-and-oidc.md).
 
 ## Kafka: фиксация и карантин
 

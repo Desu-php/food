@@ -13,16 +13,15 @@ authorization. Login не требует редиректов. Frontend в эт�
 [Контракт Quasar, запуск, ключи и миграция](docs/auth-service.md),
 [ADR 0013](docs/adr/0013-independent-auth-service.md).
 
-Новый режим включается overlay `deploy/compose.auth.yaml` после импорта и проверки
-привязок. OIDC/Keycloak и старый registry сохранены для контролируемого перехода;
-два overlay одновременно не подключаются. Публичная production-регистрация пока
-создаёт PENDING_VERIFICATION: без почтового канала подтверждение/recovery недоступны,
-а вход такого customer закрыт. Управляемые аккаунты создаются через `authctl`.
+Локальный запуск использует `deploy/compose.auth.yaml` вместе с основным Compose.
+Публичная production-регистрация создаёт PENDING_VERIFICATION: без почтового канала
+подтверждение/recovery недоступны. Для localhost разрешён вход без проверки email;
+управляемые аккаунты создаются через `authctl`.
 
 ```sh
-# После подготовки .local/auth/keys.json, csrf.key, service.key и новых DB passwords:
-docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.auth.yaml up -d --build
-# Сквозная проверка нового Auth в отдельном disposable deployment:
+python3 scripts/setup-local.py
+docker compose up -d --build --wait
+# Сквозная проверка Auth в отдельном тестовом окружении:
 python3 scripts/verify-auth-service.py
 ```
 
@@ -49,35 +48,14 @@ per-device история и TTL предложений. Локально исп
 
 Этап 16: `GET /v1/auth/me` в Orders, профиль из серверного Principal, общий
 API audience для SPA, явное различение access/ID token и CORS по allowlist.
-[Контракт frontend, регистрация staff и запуск Keycloak по HTTPS](docs/auth-profile-oidc.md),
+[Контракт Profile и CORS](docs/auth-profile-oidc.md),
 [ADR 0012](docs/adr/0012-auth-profile-and-oidc.md).
 
-В сохранённом legacy режиме Stage 16 frontend выполняет Code + PKCE S256 с public client `food-pwa`
-и передаёт `Authorization: Bearer <access_token>`. Profile возвращает
-`{"user_id":10,"roles":["restaurant_staff"],"restaurant_ids":[1,2],"permissions":[]}`,
-всегда с `Cache-Control: no-store`; 401 означает отсутствующий/недействительный
-токен, 403 — отсутствие привязки Subject в серверном реестре. Выбор ресторана
-в UI не заменяет серверные grants. Имена/email/токены в профиль не включаются.
-
-Для реального IdP задайте `DEV_AUTH_ENABLED=false`, `OIDC_ISSUER`, `OIDC_JWKS_URL`,
-`OIDC_AUDIENCE=food-api`, `AUTH_IDENTITIES_FILE` и точные `CORS_ALLOWED_ORIGINS`.
-Compose наследует общий audience во всех четырёх API, если service override пуст.
-Issuer/JWKS требуют HTTPS даже в development; роли и business IDs берутся из
-deployment registry. Не используйте frontend Client ID вместо API audience.
-Локальный Keycloak запускается опциональным `deploy/compose.oidc.yaml`; сначала
-подготовьте TLS и привязки по инструкции выше. Frontend `.env` контракт:
-
-```dotenv
-OIDC_AUTHORITY=https://identity.food.test:8443/realms/food
-OIDC_CLIENT_ID=food-pwa
-AUTH_PROFILE_URL=http://localhost:8081/v1/auth/me
-```
-
-Способ экспорта этих имён в Quasar следует сверить в отдельном frontend-проекте;
-он в этом репозитории отсутствует. Пример public client использует callback
-`http://localhost:9000/auth/callback` и post-logout `http://localhost:9000/`.
-Автопроверка с настоящим HTTPS Keycloak и временными credentials:
-`python3 scripts/verify-auth.py`; browser/PWA smoke выполняется в отдельном frontend.
+Frontend входит через `POST http://localhost:8084/v1/auth/login`, получает короткий
+access token и передаёт `Authorization: Bearer <access_token>` в бизнес-API.
+Orders Profile возвращает `user_id`, `roles`, `restaurant_ids`, `permissions`.
+Auth дополнительно возвращает customer/courier bindings в своём профиле.
+Подробный контракт cookies, CSRF и refresh — в [Auth Service](docs/auth-service.md).
 
 Monorepo для сервисов доставки еды. Реализованы Catalog с ресторанами, категориями и блюдами и Orders с созданием,
 чтением, отменой и постоянной идемпотентностью. У каждого сервиса своя база PostgreSQL,
@@ -157,31 +135,40 @@ monorepo. Корневого go.mod нет. Поэтому из корня ис�
 Docker Desktop. Команды ниже выполняются из корня репозитория:
 
 ```bash
-# Для нового окружения (не перезаписывайте существующие секреты):
-cp .env.example .env
-docker compose --env-file .env -f deploy/compose.yaml up --build -d
-docker compose --env-file .env -f deploy/compose.yaml ps
-docker compose --env-file .env -f deploy/compose.yaml logs -f catalog
+# Создаёт .env при отсутствии, заполняет Auth DB passwords и ключи.
+# Существующие пароли и signing keys сохраняются.
+python3 scripts/setup-local.py
+docker compose up --build -d --wait
+docker compose ps
+docker compose logs -f auth catalog
 ```
 
-Для уже настроенного локального Keycloak подключайте также OIDC overlay:
+В `.env` выбран `COMPOSE_FILE=deploy/compose.yaml:deploy/compose.auth.yaml`.
+Публичные адреса: Catalog `http://localhost:8080`, Orders `http://localhost:8081`,
+Notifications `http://localhost:8083`, Auth `http://localhost:8084`,
+Delivery `http://localhost:8085`. Frontend origin — `http://localhost:9000`.
+В контейнерах используются внутренние DNS-имена; Auth authority и Catalog quote
+listener не публикуются на хосте. JWT issuer остаётся `http://localhost:8084`.
 
-```bash
-docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.oidc.yaml up -d --wait
-```
+Auth secrets находятся в `.local/auth/`; `.env` и этот каталог исключены из Git.
+`setup-local.py` задаёт `AUTH_SECRET_GID` по группе хоста, а Compose добавляет эту
+группу контейнерам, читающим файлы с правами 0640. Сам каталог имеет права 0700.
+`AUTH_COOKIE_SECURE=false` и `AUTH_ALLOW_UNVERIFIED_LOGIN=true` предназначены для
+локального HTTP; production требует HTTPS, Secure cookies и проверенные аккаунты.
 
-Если в `.env` задан `COMPOSE_FILE=deploy/compose.yaml:deploy/compose.oidc.yaml`,
-достаточно `docker compose up -d --wait`. Явный `-f deploy/compose.yaml` перекрывает
-`COMPOSE_FILE` и исключает overlay: API теряют монтирование реестра и CA, а Keycloak
-показывается как orphan. При `cannot open AUTH_IDENTITIES_FILE` проверьте эту
-команду запуска. Подготовка OIDC описана в [инструкции](docs/auth-profile-oidc.md).
+Первоначальный admin создаётся через stdin по [инструкции Auth](docs/auth-service.md#управляемые-пользователи-и-миграция).
+Если в локальной `.env` подготовлены `LOCAL_ADMIN_EMAIL`/`LOCAL_ADMIN_PASSWORD`,
+используйте их для входа после provisioning. Они не передаются контейнерам как env.
+Подготовленные development accounts используют префиксы `LOCAL_ADMIN_`,
+`LOCAL_STAFF_`, `LOCAL_CUSTOMER_`, `LOCAL_COURIER_`, `LOCAL_DISPATCHER_`:
+`EMAIL`/`PASSWORD` для входа и `USER_ID` для проверки сохранённой идентичности.
+Это локальные данные; setup новых ключей не создаёт и не меняет аккаунты в БД.
+Для curl сохраните access token администратора в `ADMIN_TOKEN`, а customer —
+в `CUSTOMER_TOKEN`. Примеры ниже требуют действительных токенов Auth.
 
-Для существующей `.env` добавьте CATALOG_DB_PASSWORD, ORDERS_DB_PASSWORD,
-NOTIFICATIONS_POSTGRES_PASSWORD, NOTIFICATIONS_DB_PASSWORD и DELIVERY_DB_PASSWORD из
-нового примера, задав собственные URL-safe пароли. Для native Catalog также
-обновите DATABASE_URL на роль catalog_service (см. пример). Старый POSTGRES_PASSWORD не
-меняйте: он должен соответствовать сохранённому volume. Новые переменные
-APP_ENV=development и DEV_AUTH_ENABLED=true нужны для локального Orders API.
+Пароли PostgreSQL должны соответствовать сохранённым volumes; существующий
+`POSTGRES_PASSWORD` при переключении Auth не меняйте. Для native Catalog
+`DATABASE_URL` должен использовать роль `catalog_service`.
 
 PostgreSQL сначала проходит healthcheck. `init-databases` создаёт отдельные роли
 и базы, ограничивает межбазовый доступ и переводит старые Catalog tables на
@@ -193,7 +180,7 @@ ID генерируется PostgreSQL identity, timestamps хранятся в 
 
 Используется PostgreSQL 18 (`postgres:18-alpine`): major-версия закреплена,
 исправления ветки 18 доступны при обновлении образа. Для загрузки свежего образа:
-`docker compose --env-file .env -f deploy/compose.yaml pull postgres`.
+`docker compose pull postgres`.
 Volume монтируется в `/var/lib/postgresql`; данные PostgreSQL 18 хранятся в
 `/var/lib/postgresql/18/docker` согласно настройкам официального образа.
 
@@ -212,7 +199,7 @@ Compose-пример рассчитан на пароль из URL-безопа�
 Остановка с ожиданием текущих HTTP-запросов:
 
 ```bash
-docker compose --env-file .env -f deploy/compose.yaml stop orders catalog notifications outbox
+docker compose stop orders catalog notifications outbox
 ```
 
 ## Миграции
@@ -222,8 +209,8 @@ docker compose --env-file .env -f deploy/compose.yaml stop orders catalog notifi
 меняет схему. Для повторного применения новых миграций (у Orders своя schema_migrations):
 
 ```bash
-docker compose --env-file .env -f deploy/compose.yaml run --rm migrate
-docker compose --env-file .env -f deploy/compose.yaml run --rm migrate-orders
+docker compose run --rm migrate
+docker compose run --rm migrate-orders
 ```
 
 Добавляйте пары `000003_description.up.sql` / `000003_description.down.sql`.
@@ -235,8 +222,8 @@ docker compose --env-file .env -f deploy/compose.yaml run --rm migrate-orders
 адреса не заполнены; сохраняет рестораны):
 
 ```bash
-docker compose --env-file .env -f deploy/compose.yaml stop catalog
-docker compose --env-file .env -f deploy/compose.yaml run --rm migrate \
+docker compose stop catalog
+docker compose run --rm migrate \
   -path=/migrations \
   -database='postgres://catalog_service:catalog_service_local_password@postgres:5432/catalog?sslmode=disable' \
   down 1
@@ -247,25 +234,18 @@ URL в примере отката должен соответствовать �
 
 ## Запуск Go без Docker
 
-Нужна работающая PostgreSQL с применёнными миграциями. Например, сначала запустите
-только БД и миграции в Compose:
+Для локального запуска всех сервисов используйте Compose: приватный Auth authority
+намеренно доступен только в его сети. Сборка Go на хосте остаётся независимой:
 
 ```bash
-docker compose --env-file .env -f deploy/compose.yaml up -d postgres
-docker compose --env-file .env -f deploy/compose.yaml run --rm migrate
-set -a
-. ./.env
-set +a
-go run ./services/catalog/cmd/api
-# В другом shell экспортируйте .env и запустите:
-# DATABASE_URL="$ORDERS_DATABASE_URL" HTTP_ADDR=:8081 go run ./services/orders/cmd/api
+go build -o /tmp/catalog ./services/catalog/cmd/api
+(cd services/auth && GOWORK=off go build ./...)
 ```
 
-Либо из `services/catalog`: `go run ./cmd/api`. Не запускайте отдельный `.go`-файл.
-Приложение не загружает `.env` автоматически: оно читает переменные окружения.
-Не запускайте локальный процесс и Compose Catalog одновременно на одном порту.
-Для проверки graceful shutdown соберите бинарник и отправьте ему SIGTERM:
-`go build -o /tmp/catalog ./services/catalog/cmd/api`.
+Запуск native API требует отдельно доступных PostgreSQL, JWKS и приватного Auth
+endpoint; не используйте контейнерные DNS-имена из `.env` как host URLs.
+`.env` автоматически читает только Compose; Go-процессы читают экспортированные
+переменные. Не запускайте native и Compose API на одном порту.
 
 Основные настройки (полный пример — `.env.example`):
 
@@ -323,10 +303,10 @@ curl -i http://localhost:8080/health
 curl -i http://localhost:8080/ready
 curl -i 'http://localhost:8080/restaurants?limit=10&offset=0'
 curl -i http://localhost:8080/restaurants/1
-curl -i -X POST http://localhost:8080/restaurants -H 'X-Dev-User-ID: 1' \
+curl -i -X POST http://localhost:8080/restaurants -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"name":"New Cafe","is_open":true}'
-curl -i -X PATCH http://localhost:8080/restaurants/3 -H 'X-Dev-User-ID: 1' \
+curl -i -X PATCH http://localhost:8080/restaurants/3 -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"is_open":false}'
 ```
@@ -348,8 +328,8 @@ curl -i -X PATCH http://localhost:8080/restaurants/3 -H 'X-Dev-User-ID: 1' \
 примените миграции, затем пересоберите сервис:
 
 ```bash
-docker compose --env-file .env -f deploy/compose.yaml run --rm migrate
-docker compose --env-file .env -f deploy/compose.yaml up --build -d catalog
+docker compose run --rm migrate
+docker compose up --build -d catalog
 ```
 
 | Доступ | Метод и путь | Успех |
@@ -364,7 +344,7 @@ docker compose --env-file .env -f deploy/compose.yaml up --build -d catalog
 Публичное чтение доступно без аутентификации. Каждая мутация проверяет principal:
 создание ресторана требует admin, изменения существующего ресторана/меню — admin
 либо restaurant_staff с серверным grant именно этого ресторана. В локальном
-примере DEV_ADMIN_IDS=1 и X-Dev-User-ID: 1; production использует Bearer JWT.
+примере используется ADMIN_TOKEN с серверной ролью admin.
 
 Категории упорядочены по `(sort_order, id)`, блюда внутри категории — по `id`.
 Отдельного sort_order у блюда сейчас нет; ID обеспечивает стабильный порядок.
@@ -396,29 +376,29 @@ PATCH меняет только переданные поля. `false` откл�
 
 ```bash
 # Создать категорию; ответ 201 содержит её ID и timestamps.
-curl -i -X POST http://localhost:8080/restaurants/1/categories -H 'X-Dev-User-ID: 1' \
+curl -i -X POST http://localhost:8080/restaurants/1/categories -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"name":"Пицца","sort_order":1}'
 
 # Изменить порядок категории.
-curl -i -X PATCH http://localhost:8080/restaurants/1/categories/1 -H 'X-Dev-User-ID: 1' \
+curl -i -X PATCH http://localhost:8080/restaurants/1/categories/1 -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"sort_order":0}'
 
 # Создать блюдо; ответ 201 содержит все его поля и timestamps.
-curl -i -X POST http://localhost:8080/restaurants/1/items -H 'X-Dev-User-ID: 1' \
+curl -i -X POST http://localhost:8080/restaurants/1/items -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"category_id":1,"name":"Маргарита","description":"Сыр, томаты","price_minor":6500,"currency":"TJS","is_available":true}'
 
 # Частично изменить цену и доступность, сохранив остальные поля.
-curl -i -X PATCH http://localhost:8080/restaurants/1/items/1 -H 'X-Dev-User-ID: 1' \
+curl -i -X PATCH http://localhost:8080/restaurants/1/items/1 -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"price_minor":7000,"is_available":false}'
 
 curl -i http://localhost:8080/restaurants/1/menu
 
 # Soft delete: 204, строка в БД сохраняется, публичное меню её больше не возвращает.
-curl -i -X DELETE http://localhost:8080/restaurants/1/items/1 -H 'X-Dev-User-ID: 1'
+curl -i -X DELETE http://localhost:8080/restaurants/1/items/1 -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
 Пример публичного ответа:
@@ -472,7 +452,7 @@ go build ./services/catalog/cmd/api
 Интеграционные тесты пропускаются без TEST_DATABASE_URL. Создайте отдельную БД:
 
 ```bash
-docker compose --env-file .env -f deploy/compose.yaml exec postgres \
+docker compose exec postgres \
   createdb -U catalog catalog_test
 TEST_DATABASE_URL='postgres://catalog:catalog_local_password@localhost:5432/catalog_test?sslmode=disable' \
   go test -race -count=1 -v ./services/catalog/... ./services/orders/...
@@ -502,28 +482,28 @@ TLS и доступ к БД. См. [настройку OIDC](docs/security-relia
 
 ## Order Service: запуск и API
 
-`docker compose --env-file .env -f deploy/compose.yaml up --build -d` запускает
+`docker compose up --build -d` запускает
 весь стек. Catalog: http://localhost:8080, Orders: http://localhost:8081.
 На свежей базе ресторан 1 открыт. Создайте категорию и блюдо, затем заказ:
 
 ```bash
-curl -sS -X POST http://localhost:8080/restaurants/1/categories -H 'X-Dev-User-ID: 1' \
+curl -sS -X POST http://localhost:8080/restaurants/1/categories -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H 'Content-Type: application/json' -d '{"name":"Основное","sort_order":0}'
 # Подставьте фактический category_id из ответа (на свежей базе — 1).
-curl -sS -X POST http://localhost:8080/restaurants/1/items -H 'X-Dev-User-ID: 1' \
+curl -sS -X POST http://localhost:8080/restaurants/1/items -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"category_id":1,"name":"Плов","description":"","price_minor":6500,"currency":"TJS","is_available":true}'
 # До оформления явно настройте координаты, DELIVERY и тариф (см. docs/pricing.md).
-curl -X PATCH http://localhost:8080/restaurants/1 -H 'Content-Type: application/json' -H 'X-Dev-User-ID: 1' -d '{"latitude":38.56,"longitude":68.77}'
-curl -X PUT http://localhost:8080/restaurants/1/delivery-settings -H 'Content-Type: application/json' -H 'X-Dev-User-ID: 1' -d '{"delivery_enabled":true,"pickup_enabled":true,"minimum_delivery_subtotal_minor":0}'
-curl -X POST http://localhost:8080/restaurants/1/delivery-tariffs -H 'Content-Type: application/json' -H 'X-Dev-User-ID: 1' -d '{"max_distance_meters":2000,"delivery_fee_minor":1000}'
+curl -X PATCH http://localhost:8080/restaurants/1 -H 'Content-Type: application/json' -H "Authorization: Bearer $ADMIN_TOKEN" -d '{"latitude":38.56,"longitude":68.77}'
+curl -X PUT http://localhost:8080/restaurants/1/delivery-settings -H 'Content-Type: application/json' -H "Authorization: Bearer $ADMIN_TOKEN" -d '{"delivery_enabled":true,"pickup_enabled":true,"minimum_delivery_subtotal_minor":0}'
+curl -X POST http://localhost:8080/restaurants/1/delivery-tariffs -H 'Content-Type: application/json' -H "Authorization: Bearer $ADMIN_TOKEN" -d '{"max_distance_meters":2000,"delivery_fee_minor":1000}'
 # Подставьте menu_item_id из ответа (на свежей базе — 1).
 curl -i -X POST http://localhost:8081/orders \
   -H 'Content-Type: application/json' \
-  -H 'X-Dev-Customer-ID: 7' -H 'Idempotency-Key: order-demo-1' \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN" -H 'Idempotency-Key: order-demo-1' \
   -d '{"restaurant_id":1,"fulfillment_type":"DELIVERY","delivery_address":"Душанбе, улица 1","currency":"TJS","delivery_latitude":38.56,"delivery_longitude":68.77,"expected_total_minor":14000,"items":[{"menu_item_id":1,"quantity":2}]}'
-curl -i http://localhost:8081/orders/1 -H 'X-Dev-Customer-ID: 7'
-curl -i -X POST http://localhost:8081/orders/1/cancel -H 'X-Dev-Customer-ID: 7'
+curl -i http://localhost:8081/orders/1 -H "Authorization: Bearer $CUSTOMER_TOKEN"
+curl -i -X POST http://localhost:8081/orders/1/cancel -H "Authorization: Bearer $CUSTOMER_TOKEN"
 curl -i http://localhost:8081/health
 curl -i http://localhost:8081/ready
 ```
@@ -636,9 +616,9 @@ NOTIFICATIONS_POSTGRES_PASSWORD. Дополните существующую `.e
 
 ```bash
 cp .env.example .env
-docker compose --env-file .env -f deploy/compose.yaml up --build -d --wait
-docker compose --env-file .env -f deploy/compose.yaml ps
-docker compose --env-file .env -f deploy/compose.yaml logs -f outbox notifications
+docker compose up --build -d --wait
+docker compose ps
+docker compose logs -f outbox notifications
 ```
 
 Контейнеры подключаются к `redpanda:9092` через KAFKA_INTERNAL_BROKERS.
@@ -649,11 +629,11 @@ Outbox health/readiness слушают :8084 внутри контейнера; 
 что позволяет запускать несколько workers:
 
 ```bash
-docker compose --env-file .env -f deploy/compose.yaml up -d --scale outbox=2
-docker compose --env-file .env -f deploy/compose.yaml run --rm migrate-notifications
-docker compose --env-file .env -f deploy/compose.yaml exec redpanda \
+docker compose up -d --scale outbox=2
+docker compose run --rm migrate-notifications
+docker compose exec redpanda \
   rpk topic describe orders.events.v1 -X brokers=redpanda:9092
-docker compose --env-file .env -f deploy/compose.yaml exec redpanda \
+docker compose exec redpanda \
   rpk group describe notifications-v1 -X brokers=redpanda:9092
 ```
 
@@ -690,13 +670,13 @@ Worker асинхронно создаст доставки активным у�
 При повторном Idempotency-Key новое событие не создаётся. Проверить записи:
 
 ```bash
-docker compose --env-file .env -f deploy/compose.yaml exec postgres \
+docker compose exec postgres \
   psql -U orders_service -d orders -c \
   'SELECT event_id,aggregate_id,aggregate_version,status,attempts,lease_until,last_error FROM outbox_events ORDER BY created_at;'
-docker compose --env-file .env -f deploy/compose.yaml exec notifications-postgres \
+docker compose exec notifications-postgres \
   psql -U notifications_service -d notifications -c \
   'SELECT event_id,order_id,aggregate_version,kind,status,correlation_id FROM notifications ORDER BY id;'
-docker compose --env-file .env -f deploy/compose.yaml exec notifications-postgres \
+docker compose exec notifications-postgres \
   psql -U notifications_service -d notifications -c \
   'SELECT id,topic,partition,offset_value,reason,attempts,resolved_at FROM consumer_quarantine ORDER BY id;'
 ```
@@ -705,10 +685,10 @@ docker compose --env-file .env -f deploy/compose.yaml exec notifications-postgre
 этого заказа. После устранения причины повторите её, подставив настоящий UUID:
 
 ```bash
-docker compose --env-file .env -f deploy/compose.yaml run --rm --no-deps \
+docker compose run --rm --no-deps \
   outbox -requeue EVENT_UUID
 # После исправления причины/добавления поддержки схемы повторить карантин ID=1:
-docker compose --env-file .env -f deploy/compose.yaml run --rm --no-deps \
+docker compose run --rm --no-deps \
   notifications -replay-parked 1 -operator alice -resolution-note 'Contract support deployed; incident INC-123'
 ```
 
@@ -720,7 +700,7 @@ PENDING означает ожидание обработки worker. SENT озн
 
 Чтобы проверить отказ вручную, остановите только `redpanda`, создайте заказ и
 проверьте рост attempts/наличие неопубликованного Outbox. Верните брокер командой
-`docker compose --env-file .env -f deploy/compose.yaml up -d redpanda` и дождитесь
+`docker compose up -d redpanda` и дождитесь
 PUBLISHED и сохранённого intent. При длительном отказе проверьте DEAD и выполните requeue.
 
 Для native запуска после миграций (загрузите нужные переменные из `.env`):

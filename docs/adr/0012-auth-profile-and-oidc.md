@@ -26,7 +26,7 @@ SPA client food-pwa использует Code + PKCE S256 без client secret; 
 не является API audience. Server registry остаётся источником ролей/business IDs.
 
 Сохраняем coreos/go-oidc и его signature/issuer/audience/expiry verification.
-Дополнительно допускаем только Keycloak signed payload typ=Bearer или защищённый
+Дополнительно допускаем только signed payload typ=Bearer или защищённый
 JOSE typ=at+jwt/application/at+jwt без payload typ. Непомеченные JWT, ID и refresh
 tokens отклоняются. Ключи выбираются только из настроенного JWKS, RS256/ES256.
 Реальный development IdP также использует HTTPS; HTTP остаётся только test fixture.
@@ -34,8 +34,8 @@ tokens отклоняются. Ключи выбираются только из
 CORS — общий HTTP middleware `platform/security`, подключённый bootstrap перед
 authentication только для публичных семейств маршрутов. Явный origin allowlist,
 без wildcard и cookie credentials, с обработкой preflight и Authorization header.
-Внутренние endpoint, metrics и health не получают browser access. Опциональный
-локальный Keycloak overlay содержит TLS и public client realm import без паролей.
+Внутренние endpoint, metrics и health не получают browser access.
+Текущий локальный login описан в ADR 0013 и использует самостоятельный Auth.
 
 ## Последствия и ограничения
 

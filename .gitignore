@@ -44,5 +44,5 @@ Desktop.ini
 /firebase-credentials*.json
 /service-account*.json
 
-# Local OIDC keys, CA certificates, registry and development IdP state.
+# Local signing keys, service secrets and development state.
 /.local/

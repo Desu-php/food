@@ -319,7 +319,7 @@ func (a *Authenticator) Wrap(next http.Handler) http.Handler {
 			return
 		}
 		// go-oidc verifies JWTs but does not distinguish ID tokens from access
-		// tokens. Accept Keycloak's signed Bearer claim or RFC 9068's protected
+		// tokens. Accept the signed Bearer claim or RFC 9068's protected
 		// access-token header. Untyped JWTs and ID tokens fail closed.
 		signed, err := jose.ParseSignedCompact(parts[1], []jose.SignatureAlgorithm{jose.RS256, jose.ES256})
 		if err != nil || len(signed.Signatures) != 1 {
@@ -327,9 +327,9 @@ func (a *Authenticator) Wrap(next http.Handler) http.Handler {
 			return
 		}
 		typ, _ := signed.Signatures[0].Protected.ExtraHeaders[jose.HeaderType].(string)
-		keycloakAccess := claims.Type == "Bearer" && (typ == "" || typ == "JWT" || typ == "at+jwt" || typ == "application/at+jwt")
+		bearerAccess := claims.Type == "Bearer" && (typ == "" || typ == "JWT" || typ == "at+jwt" || typ == "application/at+jwt")
 		rfcAccess := claims.Type == "" && (typ == "at+jwt" || typ == "application/at+jwt")
-		if !keycloakAccess && !rfcAccess {
+		if !bearerAccess && !rfcAccess {
 			deny(w, 401)
 			return
 		}

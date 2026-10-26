@@ -163,37 +163,34 @@ provisioning с новым секретом после внешней прове
 
 ## Запуск и секреты
 
-Старый `deploy/compose.oidc.yaml` остаётся рабочим. Новый opt-in overlay:
+Для localhost основной Compose и Auth overlay подключаются через `.env`:
 
 ```sh
-docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.auth.yaml up -d --build
+python3 scripts/setup-local.py
+docker compose up -d --build --wait
 ```
 
-До первого запуска:
+`setup-local.py` создаёт `.env` из `.env.example`, если его нет; сохраняет существующие
+пароли и ключи, генерирует недостающие AUTH_POSTGRES_PASSWORD/AUTH_DB_PASSWORD,
+ES256 ring `.local/auth/keys.json`, CSRF и service keys. Требуется Go из go.work.
+`.env` имеет mode 0600, каталог secrets — 0700, key files — 0640.
+AUTH_SECRET_GID задаётся по группе хоста и добавляется контейнерам как supplementary
+GID: ключи не становятся общедоступными. Auth получает все три файла, бизнес-API
+и push worker — только service key. На другом хосте повторите setup для его GID.
 
-1. Создать `.local/auth/` с правами 0700. Не перезаписывать существующий `.env`.
-2. Создать новые AUTH_POSTGRES_PASSWORD / AUTH_DB_PASSWORD (для DSN удобно hex).
-3. Сгенерировать ключи вне образа:
+`.env.example` выбирает APP_ENV=development, AUTH_ISSUER=http://localhost:8084,
+AUTH_COOKIE_SECURE=false, AUTH_ALLOW_UNVERIFIED_LOGIN=true и
+CORS_ALLOWED_ORIGINS=http://localhost:9000. Это позволяет проверять регистрацию и
+вход без почтового канала в development. В production эти исключения запрещены.
 
-   ```sh
-   go run ./services/auth/cmd/authctl keygen -out .local/auth/keys.json -kid initial
-   (umask 077; openssl rand -hex 32 > .local/auth/csrf.key)
-   (umask 077; openssl rand -hex 32 > .local/auth/service.key)
-   ```
+Публичный Auth — `http://localhost:8084`; JWKS для контейнеров —
+`http://auth:8084/.well-known/jwks.json`; authority — `http://auth:8086`.
+API ожидают healthcheck Auth при запуске. Не заменяйте внутренние адреса на localhost:
+в контейнере это адрес самого контейнера. Для явных Compose файлов используйте оба:
+`docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.auth.yaml up -d`.
 
-4. Разрешить чтение именно UID 10001 контейнера через ACL/владение файлами; не
-   делать private keys общедоступными. Пример Linux с ACL:
-   `setfacl -m u:10001:r .local/auth/{keys.json,csrf.key,service.key}`.
-5. Для HTTP loopback development явно указать APP_ENV=development,
-   AUTH_ISSUER=http://localhost:8084, AUTH_COOKIE_SECURE=false,
-   CORS_ALLOWED_ORIGINS=http://localhost:9000. При необходимости тестовой регистрации
-   AUTH_ALLOW_UNVERIFIED_LOGIN=true; это не production конфигурация.
-6. Запускать сначала только `auth-postgres init-auth-database migrate-auth auth`,
-   выполнить импорт и provisioning, а затем переключать бизнес-API.
-
-После переключения можно сохранить в локальном `.env`
-`COMPOSE_FILE=deploy/compose.yaml:deploy/compose.auth.yaml`. Не комбинировать auth
-и oidc overlays. При явных `-f` COMPOSE_FILE не используется.
+Существующие business ID перед переключением сохраняются через импорт registry,
+описанный ниже. Подготовка файлов сама не изменяет аккаунты и бизнес-данные.
 
 Production использует HTTPS issuer/JWKS, HTTPS Auth authority и HTTPS Notifications
 revocation URL; platform/security отвергает HTTP endpoints в production.
@@ -259,7 +256,7 @@ Admin HTTP update получает полный набор связей; custome
 
    ```sh
    docker compose run --rm --no-deps --entrypoint authctl \
-     -v "$PWD/.local/oidc/identities.json:/registry.json:ro" auth \
+     -v "$PWD/.local/auth/import-identities.json:/registry.json:ro" auth \
      import-registry -registry /registry.json -operator migration-admin
    ```
 
@@ -273,9 +270,8 @@ Admin HTTP update получает полный набор связей; custome
 6. Проверить новый login/profile/JWT в изолированном стенде. Затем согласованно
    переключить все четыре API и push worker на новые issuer/JWKS/authority, убрать
    AUTH_IDENTITIES_FILE только в новой конфигурации. Смешанная authority запрещена.
-7. Обновить frontend по контракту выше в отдельной задаче. Удаление Keycloak/его
-   volumes — только после проверки перехода и отдельного решения о сохранении
-   rollback/backups. Текущий этап не удаляет работающий IdP автоматически.
+7. Обновить frontend по контракту выше в отдельной задаче. После импорта удалить
+   временный registry с хоста. Сохранение business IDs проверяется до открытия API.
 
 Новый режим не зависит от ручного registry: актуальные roles/grants лежат в Auth DB.
 Он не принимает старые JWT, а legacy режим не принимает новые. Откат требует
@@ -303,8 +299,6 @@ retention/архивирование audit, мониторинг latency и ре
 scripts/check.sh
 scripts/test-integration.sh
 python3 scripts/verify-auth-service.py
-# Старый механизм остаётся проверяемым до завершения перехода:
-python3 scripts/verify-auth.py
 python3 scripts/verify-push.py
 python3 scripts/verify-pricing.py
 python3 scripts/verify-offers.py

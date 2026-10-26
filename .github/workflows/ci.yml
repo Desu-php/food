@@ -51,15 +51,6 @@ jobs:
           persist-credentials: false
       - run: python3 scripts/verify-push.py
 
-  auth-e2e:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - run: python3 scripts/verify-auth.py
-
   auth-service-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30

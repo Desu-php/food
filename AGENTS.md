@@ -333,7 +333,7 @@ and Notifications. This supersedes Stage 9's distinct-audience requirement only
 for this shared trusted backend; per-service audience overrides remain supported.
 Never use the public SPA client ID as API audience or accept ID/refresh tokens.
 Require RS256/ES256, trusted HTTPS issuer/JWKS, aud, exp and an access-token marker
-(Keycloak signed typ=Bearer or RFC 9068 protected typ=at+jwt/application/at+jwt).
+(signed typ=Bearer or RFC 9068 protected typ=at+jwt/application/at+jwt).
 Authorization Code + PKCE S256 has no frontend client secret.
 
 Identity registry remains deployment-owned and issuer-namespaced. Staff bindings
@@ -347,11 +347,10 @@ preflights without authenticating OPTIONS. Never enable browser access to intern
 listeners, health, metrics or service-secret headers. Dev identity headers remain
 explicit development/test only and are not allowed through CORS.
 
-See docs/auth-profile-oidc.md, docs/security-reliability.md and ADR 0012. The optional
-deploy/compose.oidc.yaml is local Keycloak with HTTPS and public PKCE client;
-never deploy its start-dev/H2 setup to production. Do not modify the separate
-frontend repository. Run scripts/check.sh, scripts/test-integration.sh,
-scripts/verify-auth.py (real isolated Keycloak with temporary credentials) and existing
+See docs/auth-profile-oidc.md, docs/security-reliability.md and ADR 0012.
+Local development uses the independent Auth Service described below.
+Do not modify the separate frontend repository. Run scripts/check.sh,
+scripts/test-integration.sh, scripts/verify-auth-service.py and existing
 verify-push/pricing/offers/pickup scripts. No commits without authorization.
 
 ## Stage 18: Independent Auth Service
@@ -384,7 +383,7 @@ never replace it with client roles or stale startup grants. Notifications rechec
 device authorization before sending; permission changes queue durable, fenced
 device revocations in Auth and Notifications scrubs identifiers in its own DB.
 
-Preserve old OIDC, registry, optional Compose and tests during migration. Import
+Preserve generic JWT verification and registry import compatibility during migration. Import
 registry identities transactionally using original UserID/CustomerID/CourierID/
 RestaurantID; conflicting imports abort. Do not import passwords or invent emails,
 verification or new business facts. Imported accounts start disabled and require
@@ -399,5 +398,5 @@ OIDC Provider. Do not modify the separate frontend repository or commit changes.
 
 See docs/auth-service.md and ADR 0013. Run scripts/check.sh,
 scripts/test-integration.sh, scripts/verify-auth-service.py and the existing
-verify-auth/push/pricing/offers/pickup scripts. Keep email verification/recovery
+verify-push/pricing/offers/pickup scripts. Keep email verification/recovery
 production limitations and migration/rollback consequences explicit.

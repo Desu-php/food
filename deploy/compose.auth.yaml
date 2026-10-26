@@ -1,4 +1,4 @@
-# Independent Auth deployment and opt-in migration of the existing APIs.
+# Independent Auth deployment for all public APIs.
 # Development defaults use HTTP loopback; production requires HTTPS issuer/JWKS
 # and encrypted internal authority/revocation endpoints (see docs/auth-service.md).
 services:
@@ -63,6 +63,7 @@ services:
       AUTH_ARGON_PARALLELISM: ${AUTH_ARGON_PARALLELISM:-1}
       AUTH_HASH_CONCURRENCY: ${AUTH_HASH_CONCURRENCY:-2}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:9000}
+    group_add: ["${AUTH_SECRET_GID:-10001}"]
     volumes:
       - ${AUTH_DEV_DIR:-../.local/auth}/keys.json:/run/auth/keys.json:ro
       - ${AUTH_DEV_DIR:-../.local/auth}/csrf.key:/run/auth/csrf.key:ro
@@ -89,18 +90,33 @@ services:
       AUTH_PRINCIPAL_URL: ${AUTH_PRINCIPAL_URL:-http://auth:8086}
       AUTH_SERVICE_KEY_FILE: /run/auth/service.key
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:9000}
+    depends_on:
+      auth: {condition: service_healthy}
+    group_add: &auth-secret-groups ["${AUTH_SECRET_GID:-10001}"]
     volumes: &backend-auth-volumes
       - ${AUTH_DEV_DIR:-../.local/auth}/service.key:/run/auth/service.key:ro
   orders:
     environment: *backend-auth
+    depends_on:
+      auth: {condition: service_healthy}
+    group_add: *auth-secret-groups
     volumes: *backend-auth-volumes
   delivery:
     environment: *backend-auth
+    depends_on:
+      auth: {condition: service_healthy}
+    group_add: *auth-secret-groups
     volumes: *backend-auth-volumes
   notifications:
     environment: *backend-auth
+    depends_on:
+      auth: {condition: service_healthy}
+    group_add: *auth-secret-groups
     volumes: *backend-auth-volumes
   notification-push-worker:
+    depends_on:
+      auth: {condition: service_healthy}
+    group_add: *auth-secret-groups
     environment:
       AUTH_PRINCIPAL_URL: ${AUTH_PRINCIPAL_URL:-http://auth:8086}
       AUTH_SERVICE_KEY_FILE: /run/auth/service.key

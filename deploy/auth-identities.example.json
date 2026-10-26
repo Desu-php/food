@@ -1,5 +1,5 @@
 {
-  "issuer": "https://identity.example/realms/food",
+  "issuer": "https://identity.example",
   "identities": [
     {"subject": "idp-customer-subject", "user_id": 101, "customer_id": 7, "roles": ["customer"]},
     {"subject": "idp-staff-subject", "user_id": 102, "roles": ["restaurant_staff"], "restaurants": [1]},

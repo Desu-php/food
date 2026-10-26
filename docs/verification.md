@@ -523,7 +523,7 @@ worker и реальную проверку актуальности CourierOffe
 Go 1.27.2, Docker Engine 29.9.1. Успешно выполнены:
 
 - `scripts/check.sh`: gofmt, go vet, go test, go test -race для всех шести
-  модулей, независимые GOWORK=off builds и Compose validation, включая OIDC overlay.
+  модулей, независимые GOWORK=off builds и Compose validation.
 - `scripts/test-integration.sh`: PostgreSQL/Redpanda/Redis, migration round trips
   всех четырёх сервисов и весь integration suite под race detector. Новый тест
   соединяет подписанный JWT/JWKS, Profile, restaurant grants и DELIVERY/PICKUP gates.
@@ -532,10 +532,6 @@ Go 1.27.2, Docker Engine 29.9.1. Успешно выполнены:
 - `scripts/verify-offers.py` и `scripts/verify-pickup.py`: сохранены конкурентное
   принятие/TTL/cooldown, восстановление после broker outage, cooking gate,
   самовывоз без Delivery/Saga, безопасная POS-выдача и совместный DELIVERY lifecycle.
-- `scripts/verify-auth.py`: настоящий Keycloak 26.8.1 по HTTPS, импорт realm,
-  public SPA Code + PKCE S256, отказ без PKCE, access/ID/refresh token distinction,
-  403 до серверного binding, корректный профиль после registry update/restart,
-  CORS и один access token на четырёх API с независимыми resource permissions.
 - После последнего дополнения DTO tests повторены `go test -race` для
   platform/security и Orders HTTP; в том числе проверены непустые permissions.
 
@@ -543,7 +539,6 @@ Go 1.27.2, Docker Engine 29.9.1. Успешно выполнены:
 для записи: тесты выполнены с разрешением на sockets/Docker и GOCACHE в /tmp.
 Первый новый PostgreSQL-тест ожидал WAITING_COURIER раньше remote CreateDelivery
 result; исправлено только ожидание промежуточного ACCEPTED, повторный suite прошёл.
-Keycloak error redirect без PKCE проверяется как 302 с invalid_request.
 
 Тестовые Compose projects, volumes и временные TLS/credentials удалены. Работающее
 окружение deploy не изменялось. Реальный Firebase не вызывался. Браузерная PWA
@@ -560,15 +555,14 @@ Quasar PWA. Frontend не менялся; новый контракт описа
 
 | Проверка | Результат |
 |---|---|
-| `scripts/check.sh` | PASS: gofmt, go vet, unit/HTTP, race, GOWORK=off build всех семи Go modules, Compose validation обоих auth overlays |
+| `scripts/check.sh` | PASS: gofmt, go vet, unit/HTTP, race, GOWORK=off build всех семи Go modules, Compose validation |
 | `scripts/test-integration.sh` | PASS: PostgreSQL/Redis/Redpanda, все Go integration/race, vet, up/down migrations Catalog/Orders/Delivery/Notifications/Auth |
 | `python3 scripts/verify-auth-service.py` | PASS: реальный новый Auth и JWT в четырёх API, регистрация/login, миграция IDs, refresh/reuse/concurrency, logout/all, запрет self-admin, live grants, device revocation, CSRF |
-| `python3 scripts/verify-auth.py` | PASS: сохранённый HTTPS Keycloak Code+PKCE, registry, token types, profile, CORS |
 | `python3 scripts/verify-push.py` | PASS: устройства, grants, worker concurrency, replay, identifier redaction; fake FCM |
 | `python3 scripts/verify-pricing.py` | PASS: pricing, snapshots, POS, Saga |
 | `python3 scripts/verify-offers.py` | PASS в повторном итоговом прогоне: offers, ownership, concurrent acceptance, broker recovery, cancellation/expiry |
 | `python3 scripts/verify-pickup.py` | PASS: pickup handoff/POS, restart/replay, отсутствие Delivery/Saga для pickup |
-| `python3 -m py_compile scripts/verify-auth.py scripts/verify-auth-service.py` | PASS |
+| `python3 -m py_compile scripts/verify-auth-service.py` | PASS |
 | `git diff --check` | PASS |
 
 Auth unit tests проверяют email/password invariants, Argon2id random salts и hash
@@ -584,9 +578,6 @@ concurrent cleanup, disable/last-admin protection и сброс verification п�
 
 Уточнения результатов и ограничения:
 
-- Первый legacy OIDC E2E не запустился из-за рабочего Keycloak на порту 8443.
-  Тест получил отдельный порт 28443 (TEST_KEYCLOAK_PORT); обычный overlay сохраняет
-  прежний 8443 по умолчанию. Повторный HTTPS сценарий полностью прошёл.
 - В одном раннем offers E2E был HTTP 500 при decline; в одном полном integration
   прогоне TestOfferEventsTransactionalAndIdempotent не получил due dispatch claim.
   Итоговый offers E2E прошёл; сам SQL test дополнительно прошёл 50 повторов с race,
@@ -595,7 +586,7 @@ concurrent cleanup, disable/last-admin protection и сброс verification п�
   при следующем отказе claim; алгоритм dispatch/offer decisions не изменялся.
 - GitHub Actions workflow обновлён новым Auth E2E job и проверкой седьмого модуля.
   Удалённый GitHub CI не запускался: изменения не коммитились и не публиковались.
-- Рабочий deploy/Keycloak не переключался. Реальные аккаунты не мигрировались:
+- Рабочий deployment на тот момент не переключался. Реальные аккаунты не мигрировались:
   готова проверенная transactional import/provision процедура без выдуманных email,
   паролей или изменения бизнес-ID. Все тестовые projects/volumes удалены.
 - Реальная почта, recovery, Firebase и браузерная PWA не проверялись. Почтового
@@ -604,3 +595,28 @@ concurrent cleanup, disable/last-admin protection и сброс verification п�
   Production TLS/secret storage, нагрузочные параметры Argon2id и HA Auth/DB требуют
   deployment-конфигурации. Online authority не превращает отзыв в распределённую
   транзакцию с уже выполняющимся бизнес-запросом; BFF описан как возможная эволюция.
+
+## Localhost с самостоятельным Auth — 2026-10-24
+
+Локальная `.env` подключает основной Compose и Auth overlay. Существующие пароли
+бизнес-БД сохранены; Auth использует отдельную БД и новые ключи. Пять development
+accounts перенесены штатным transactional import/provision с исходными UserID,
+CustomerID, CourierID и grants. Учётные данные находятся только в игнорируемой
+`.env`, ключи — в `.local/auth/`; временный файл импорта удалён.
+
+Выполнены успешно:
+
+- `scripts/check.sh`: vet, unit/HTTP, race, независимые сборки семи модулей и Compose.
+- `scripts/test-integration.sh`: выделенные PostgreSQL/Redpanda/Redis, миграции и Go integration tests.
+- `scripts/verify-auth-service.py`, `verify-push.py`, `verify-pricing.py`,
+  `verify-offers.py`, `verify-pickup.py`: все E2E прошли, тестовые projects удалены.
+- `docker compose up -d --wait`: рабочий localhost deployment запущен, readiness
+  Catalog/Orders/Notifications/Auth/Delivery возвращает 200.
+- Smoke: login всех пяти аккаунтов, исходные IDs, Orders profile, restaurant/courier
+  permissions, запрет customer-доступа к couriers, устройства, CORS и logout.
+- Повторный `scripts/setup-local.py` сохранил `.env`, пароли и ключи побайтно;
+  `py_compile` и `git diff --check` прошли.
+
+Локальный frontend origin — `http://localhost:9000`, Auth — `http://localhost:8084`.
+Firebase использует fake; браузерный frontend и реальная почта не проверялись.
+Рабочие бизнес-тома сохранены. Git commits не выполнялись.

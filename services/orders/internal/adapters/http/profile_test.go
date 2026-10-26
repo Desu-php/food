@@ -116,7 +116,7 @@ func TestProfileOIDCIntegration(t *testing.T) {
 		headerType             string
 		status                 int
 	}{
-		{name: "valid Keycloak access token", status: 200},
+		{name: "valid signed Bearer access token", status: 200},
 		{name: "missing token", missing: true, status: 401},
 		{name: "expired", change: func(c map[string]any) { c["exp"] = time.Now().Add(-time.Minute).Unix() }, status: 401},
 		{name: "invalid signature", otherKey: true, status: 401},

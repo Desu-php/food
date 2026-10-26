@@ -15,7 +15,5 @@ for module in $modules; do
 done
 docker compose --env-file .env.example -f deploy/compose.yaml config --quiet
 docker compose -f deploy/compose.test.yaml config --quiet
-KEYCLOAK_ADMIN_USER=config-validation KEYCLOAK_ADMIN_PASSWORD=config-validation-only \
-  docker compose --env-file .env.example -f deploy/compose.yaml -f deploy/compose.oidc.yaml config --quiet
 AUTH_POSTGRES_PASSWORD=config-validation AUTH_DB_PASSWORD=config-validation \
   docker compose --env-file .env.example -f deploy/compose.yaml -f deploy/compose.auth.yaml config --quiet
